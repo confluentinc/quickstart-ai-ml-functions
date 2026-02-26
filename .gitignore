@@ -1,0 +1,110 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.cursor-*
+.serena/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+CLAUDE.md
+claude-*
+
+# Development tools
+tools/
+handoffs/
+
+# detect-secrets
+.secrets.baseline
+gitleaks-report.json
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+*.tfvars.json
+terraform.tfvars.backup
+terraform/providers-aws.tf
+terraform/providers-azure.tf
+
+# Environment files (may contain secrets)
+.env
+.env.*
+*.env
+!credentials.env.example
+
+# Terraform credential backups and sensitive files
+terraform/terraform.tfvars.reset-backup
+terraform/terraform.tfvars.backup
+**/terraform.tfvars.reset-backup
+**/terraform.tfvars.backup
+
+# Files with sensitive credentials
+confluent_api_keys.md
+mongodb_commands.txt
+mcp_commands.txt
+updated-queries.md
+.setup_config.json
+**/.setup_config.json
+.deploy-config.json
+**/.deploy-config.json
+**/DEPLOYED_RESOURCES.md
+**/FLINK_SQL_COMMANDS.md
+FLINK_SQL_COMMANDS_EXTRACTED.md
+AGENT_DEFINITION_SYNTAX.md
+EMAIL_REPLACEMENT_IMPLEMENTATION.md
+API-KEYS-AWS.md
+.workshop-keys-state-aws.json
+API-KEYS-AZURE.md
+.workshop-keys-state-azure.json
+
+
+# Python (if scripts are added)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Data generation connections
+**/data-gen/connections/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Backup files
+*.bak
+*.backup
+
+# Processing artifacts
+processed_files.json
+chunks.json
+*_test.py
+*_batch.py
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing infrastructure (contains sensitive credentials)
+tests/
+credentials.json
