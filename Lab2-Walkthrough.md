@@ -1,92 +1,38 @@
-# Lab 2: Real-Time Payment Fraud Detection with Flink ML Functions
+# Lab 2: Real-Time Payment Fraud Detection with `ML_DETECT_ANOMALIES`
 
-This lab builds a real-time payment fraud detection pipeline on Confluent Cloud using Apache Flink's `ML_DETECT_ANOMALIES` function. Synthetic payment data is generated via the Flink faker connector, and per-customer ARIMA models detect anomalous transaction amounts and unusual country codes.
+This lab demonstrates a real-time payment fraud detection pipeline using the built-in `ML_DETECT_ANOMALIES` function. Per-customer ARIMA models flag unusually large transaction amounts, and unusual cash advance activity.
 
-## Architecture
+[Learn more about the built-in anomaly detection functions on Confluent Cloud for Apache Flink.](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
 
-| Component | Details |
-|-----------|---------|
-| **Data source** | Flink faker connector — 10 rows/sec synthetic payments |
-| **Anomaly signals** | ~0.5% amount spike (`$8,750`), ~0.5% unusual country (`NG`) |
-| **ML function** | `ML_DETECT_ANOMALIES` — online ARIMA, per `customer_id` |
-| **Output** | `fraud_transactions` table (CTAS) in Confluent Flink UI |
-| **Infrastructure** | Terraform — provisions the `payments_mock` source table only |
+## Deploy the Demo
 
-## Prerequisites
-
-Complete the [core infrastructure setup](../core/) before running this lab. Lab 2 reads Terraform remote state from `../core/terraform.tfstate`.
-
-## Terraform Resources
-
-Terraform provisions a single Flink DDL statement that creates the `payments_mock` source table:
-
-| Resource | Description |
-|----------|-------------|
-| `confluent_flink_statement.create_payments_mock` | Creates the `payments_mock` table backed by the faker connector |
-
-## Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Flink faker connector  (10 rows/sec)                           │
-│  payments_mock                                                  │
-│                                                                 │
-│  50 customer IDs · 16 fields · event-time watermark (5s)        │
-│  fraud signals: amount=$8,750 (~0.5%) · country=NG (~0.5%)      │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ML_DETECT_ANOMALIES  (Confluent Flink UI)                      │
-│                                                                 │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐     │
-│  │  ARIMA model per         │  │  ARIMA model per         │     │
-│  │  customer · amount       │  │  customer · country_code │     │
-│  └──────────────────────────┘  └──────────────────────────┘     │
-│                 amount_anom.is_anomaly                          │
-│                 loc_anom.is_anomaly                             │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │  WHERE is_anomaly = TRUE
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  fraud_transactions  (CTAS output table)                        │
-│                                                                 │
-│  is_amount_anomaly · is_location_anomaly · all payment fields   │
-└─────────────────────────────────────────────────────────────────┘
+```bash
+uv run deploy lab2
 ```
 
-## Data Schema
+This provisions the core Confluent Cloud environment, along with the `payments_mock` source table, which uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html)generating ~10 synthetic payment records per second across 50 customers.
 
-The `payments_mock` table generates realistic payment records with embedded fraud signals:
+## Walkthrough
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `payment_id` | VARCHAR | UUID |
-| `customer_id` | VARCHAR | 50 fixed IDs (`CUST-0001` – `CUST-0050`) |
-| `merchant_id` | VARCHAR | Regex `MERCH-[0-9]{4}` |
-| `merchant_name` | VARCHAR | Faker company name |
-| `merchant_category` | VARCHAR | GROCERY (most common), RESTAURANT, ELECTRONICS, TRAVEL, OTHER |
-| `amount` | DOUBLE | `$12.50`–`$110.75` normal; `$8,750.00` ~0.5% fraud signal |
-| `currency` | VARCHAR | Always `USD` |
-| `payment_method` | VARCHAR | CREDIT_CARD (60%), DEBIT_CARD (30%), WIRE_TRANSFER (10%) |
-| `card_type` | VARCHAR | VISA, MASTERCARD, AMEX, DISCOVER |
-| `card_last_four` | VARCHAR | 4-digit regex |
-| `channel` | VARCHAR | IN_STORE, ONLINE, MOBILE_APP, ATM |
-| `transaction_type` | VARCHAR | PURCHASE (80%), REFUND (10%), CASH_ADVANCE (10%) |
-| `country_code` | VARCHAR | `US` (~50%), `GB` (~49.5%), `NG` ~0.5% fraud signal |
-| `city` | VARCHAR | Faker city name |
-| `ip_address` | VARCHAR | Faker IPv4 address |
-| `transaction_ts` | TIMESTAMP(3) | Event-time; up to 5 seconds in the past; 5s watermark |
+### Data Generation
 
-## Fraud Detection Query (Run in Confluent Flink UI)
+The `payments_mock` topic uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) to generate 10 payment records per second across 50 customers. The synthetic data stream contains two financial fraud signals, which we aim to detect with `ML_DETECT_ANOMALIES`:
 
-After Terraform deploys `payments_mock`, run this query manually in the Confluent Cloud Flink UI to create the fraud output table:
+- **Transaction size spikes:** ~0.5% of transactions have an amount of `$8,750` (vs. a normal range of `$12.50`–`$110.75`)
+- **Cash advance spikes:** `CASH_ADVANCE` transaction type appears at ~10% baseline; per-customer spikes above that baseline over a rolling time window are flagged
+
+### 1. Create the `fraud_transactions` Table
+
+Open a SQL workspace in the [Confluent Cloud Flink UI](https://confluent.cloud/go/flink), select your environment and compute pool, and run the following query.
+
+Two `ML_DETECT_ANOMALY` models run per customer — one on transaction amount, one on transaction type. Anytime either model detects fraud, it emits an anomaly event to the`fraud_transactions` topic. 
 
 ```sql
 CREATE TABLE fraud_transactions AS
 WITH with_anom AS (
   SELECT
     p.*,
+    
     ML_DETECT_ANOMALIES(
       CAST(amount AS DOUBLE), transaction_ts,
       JSON_OBJECT(
@@ -99,8 +45,9 @@ WITH with_anom AS (
       ORDER BY transaction_ts
       RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS amount_anom,
+    
     ML_DETECT_ANOMALIES(
-      CASE WHEN country_code = 'NG' THEN 1.0 ELSE 0.0 END, transaction_ts,
+      CASE WHEN transaction_type = 'CASH_ADVANCE' THEN 1.0 ELSE 0.0 END, transaction_ts,
       JSON_OBJECT(
         'minTrainingSize' VALUE 10,
         'confidencePercentage' VALUE 99.0,
@@ -110,47 +57,32 @@ WITH with_anom AS (
       PARTITION BY customer_id
       ORDER BY transaction_ts
       RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    ) AS loc_anom
+    ) AS cash_anom
+    
   FROM payments_mock AS p
 )
 SELECT
-  payment_id, customer_id, merchant_id, merchant_name, merchant_category,
-  amount, currency, payment_method, card_type, card_last_four, channel,
-  transaction_type, country_code, city, ip_address, transaction_ts,
-  amount_anom.is_anomaly AS is_amount_anomaly,
-  loc_anom.is_anomaly    AS is_location_anomaly
+  payment_id, customer_id, merchant_name, merchant_category,
+  amount, payment_method, card_type, channel,
+  transaction_type, country_code, transaction_ts,
+  COALESCE(amount_anom.is_anomaly, FALSE) AS is_amount_anomaly,
+  COALESCE(cash_anom.is_anomaly, FALSE)   AS is_cash_advance_anomaly
 FROM with_anom
-WHERE amount_anom.is_anomaly = TRUE OR loc_anom.is_anomaly = TRUE;
+WHERE amount_anom.is_anomaly IS TRUE OR cash_anom.is_anomaly IS TRUE;
 ```
 
-> **Note:** `minTrainingSize: 10` is set low for demo purposes so models warm up quickly. In production, use `256` or higher.
+> [!NOTE]
+>
+> `minTrainingSize: 10` is set low so models warm up quickly for demo purposes. Each ARIMA model trains independently per customer — expect a short delay before the first anomalies appear.
 
-## Visualising Anomalies
-
-Use the following query to monitor anomaly counts over time per customer:
+To see the fraud detection anomalies, run:
 
 ```sql
-SELECT
-  window_start,
-  window_end,
-  customer_id,
-  COUNT(*) FILTER (WHERE is_amount_anomaly)   AS amount_anomalies,
-  COUNT(*) FILTER (WHERE is_location_anomaly) AS location_anomalies,
-  COUNT(*) AS total_fraud_flagged
-FROM TABLE(
-  TUMBLE(TABLE fraud_transactions, DESCRIPTOR(transaction_ts), INTERVAL '1' MINUTE)
-)
--- Optional: filter to a specific customer
--- WHERE customer_id = 'CUST-0001'
-GROUP BY window_start, window_end, customer_id
-ORDER BY window_start DESC, total_fraud_flagged DESC;
+SELECT * FROM fraud_transactions;
 ```
 
-## Outputs
+## Navigation
 
-| Output | Description |
-|--------|-------------|
-| `confluent_environment_id` | Confluent environment ID (from core) |
-| `confluent_kafka_cluster_id` | Kafka cluster ID (from core) |
-| `confluent_flink_compute_pool_id` | Flink compute pool ID (from core) |
-| `payments_mock_statement_name` | Name of the deployed Flink DDL statement |
+- **← Back to Overview**: [Main README](./README.md)
+- **← Previous Lab**: [Lab 1](./Lab1-Walkthrough.md)
+- **🧹 Cleanup**: Run `terraform destroy` 
