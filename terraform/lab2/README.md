@@ -32,17 +32,17 @@ Terraform provisions a single Flink DDL statement that creates the `payments_moc
 │  payments_mock                                                  │
 │                                                                 │
 │  50 customer IDs · 16 fields · event-time watermark (5s)        │
-│  fraud signals: amount=$8,750 (~0.5%) · country=NG (~0.5%)     │
+│  fraud signals: amount=$8,750 (~0.5%) · country=NG (~0.5%)      │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  ML_DETECT_ANOMALIES  (Confluent Flink UI)                      │
 │                                                                 │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐    │
-│  │  ARIMA model per         │  │  ARIMA model per         │    │
-│  │  customer · amount       │  │  customer · country_code │    │
-│  └──────────────────────────┘  └──────────────────────────┘    │
+│  ┌──────────────────────────┐  ┌──────────────────────────┐     │
+│  │  ARIMA model per         │  │  ARIMA model per         │     │
+│  │  customer · amount       │  │  customer · country_code │     │
+│  └──────────────────────────┘  └──────────────────────────┘     │
 │                 amount_anom.is_anomaly                          │
 │                 loc_anom.is_anomaly                             │
 └───────────────────────────┬─────────────────────────────────────┘
