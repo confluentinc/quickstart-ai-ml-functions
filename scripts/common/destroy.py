@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from .credentials import load_or_create_credentials_file, load_credentials_json
+from .credentials import load_credentials_json, load_or_create_credentials_file
 from .terraform import get_project_root
 from .terraform_runner import run_terraform_destroy
 from .ui import prompt_choice
@@ -34,35 +34,23 @@ def cleanup_terraform_artifacts(env_path: Path) -> None:
         env_path: Path to terraform environment directory
     """
     try:
-        # Remove all .tfstate files (including backups)
-        for tfstate_file in env_path.glob("*.tfstate*"):
-            tfstate_file.unlink()
-
-        # Remove all .tfvars files (including backups)
-        for tfvars_file in env_path.glob("*.tfvars*"):
-            tfvars_file.unlink()
+        # Remove generated state and variable files
+        for pattern in ("*.tfstate*", "*.tfvars*"):
+            for f in env_path.glob(pattern):
+                f.unlink()
 
         # Remove .terraform directory
         terraform_dir = env_path / ".terraform"
         if terraform_dir.exists():
             shutil.rmtree(terraform_dir)
 
-        # Remove .terraform.lock.hcl file
-        lock_file = env_path / ".terraform.lock.hcl"
-        if lock_file.exists():
-            lock_file.unlink()
+        # Remove individual generated files
+        for name in (".terraform.lock.hcl", "FLINK_SQL_COMMANDS.md", "mcp_commands.txt"):
+            path = env_path / name
+            if path.exists():
+                path.unlink()
 
-        # Remove auto-generated Flink SQL summary file
-        flink_sql_summary = env_path / "FLINK_SQL_COMMANDS.md"
-        if flink_sql_summary.exists():
-            flink_sql_summary.unlink()
-
-        # Remove legacy mcp_commands.txt file
-        mcp_commands = env_path / "mcp_commands.txt"
-        if mcp_commands.exists():
-            mcp_commands.unlink()
-
-    except Exception as e:
+    except Exception:
         # Silently continue if cleanup fails - destroy was successful
         pass
 
@@ -71,8 +59,11 @@ def main():
     """Main entry point for destroy."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Destroy deployed Confluent ML functions resources")
-    parser.add_argument("--testing", action="store_true",
-                       help="Non-interactive mode using credentials.json (for automated testing)")
+    parser.add_argument(
+        "--testing",
+        action="store_true",
+        help="Non-interactive mode using credentials.json (for automated testing)",
+    )
     args = parser.parse_args()
 
     print("=== Simple Destroy Tool ===\n")
@@ -100,7 +91,7 @@ def main():
         for key, value in env_vars.items():
             os.environ[key] = value
 
-        print(f"✓ Destroying all resources")
+        print("✓ Destroying all resources")
         print(f"  Cloud: {cloud}")
         print(f"  Environments: {', '.join(envs_to_destroy)}")
         print()
@@ -115,7 +106,7 @@ def main():
         print(f"✓ Will destroy all environments: {', '.join(envs_to_destroy)}")
 
         # Load credentials file
-        creds_file, creds = load_or_create_credentials_file(root)
+        _creds_file, creds = load_or_create_credentials_file(root)
 
         # Step 3: Load credentials into environment
         for key, value in creds.items():

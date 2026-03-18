@@ -20,7 +20,9 @@ def check_confluent_login() -> bool:
     try:
         result = subprocess.run(
             ["confluent", "environment", "list"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return "ID" in result.stdout and "env-" in result.stdout
     except (subprocess.CalledProcessError, FileNotFoundError):

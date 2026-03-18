@@ -45,13 +45,14 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from confluent_kafka import SerializingProducer
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroSerializer
     from confluent_kafka.serialization import StringSerializer
+
     CONFLUENT_KAFKA_AVAILABLE = True
 except ImportError:
     CONFLUENT_KAFKA_AVAILABLE = False
@@ -59,15 +60,15 @@ except ImportError:
 from .logging_utils import setup_logging
 from .terraform import extract_kafka_credentials, get_project_root
 
-
 # ---------------------------------------------------------------------------
 # Schema helpers
 # ---------------------------------------------------------------------------
 
+
 def infer_avro_schema(
-    fieldnames: List[str],
-    key_column: Optional[str] = None,
-    timestamp_columns: Optional[List[str]] = None,
+    fieldnames: list[str],
+    key_column: str | None = None,
+    timestamp_columns: list[str] | None = None,
     record_name: str = "record_value",
     namespace: str = "org.apache.flink.avro.generated.record",
 ) -> str:
@@ -94,10 +95,12 @@ def infer_avro_schema(
     fields = []
     for name in fieldnames:
         if name in ts_cols:
-            fields.append({
-                "name": name,
-                "type": {"type": "long", "logicalType": "timestamp-millis"},
-            })
+            fields.append(
+                {
+                    "name": name,
+                    "type": {"type": "long", "logicalType": "timestamp-millis"},
+                }
+            )
         elif name == key_column:
             fields.append({"name": name, "type": "string"})
         else:
@@ -112,7 +115,7 @@ def infer_avro_schema(
     return json.dumps(schema, indent=2)
 
 
-def _detect_timestamp_columns(schema_str: str) -> List[str]:
+def _detect_timestamp_columns(schema_str: str) -> list[str]:
     """Return column names that have logicalType timestamp-millis in the schema."""
     schema = json.loads(schema_str)
     ts_cols = []
@@ -132,6 +135,7 @@ def _detect_timestamp_columns(schema_str: str) -> List[str]:
 # ---------------------------------------------------------------------------
 # Publisher class
 # ---------------------------------------------------------------------------
+
 
 class CsvKafkaPublisher:
     """
@@ -160,12 +164,14 @@ class CsvKafkaPublisher:
         self.dry_run = dry_run
         self.logger = logging.getLogger(__name__)
 
-        self._sr_client: Optional[SchemaRegistryClient] = None
+        self._sr_client: SchemaRegistryClient | None = None
         if not dry_run:
-            self._sr_client = SchemaRegistryClient({
-                "url": schema_registry_url,
-                "basic.auth.user.info": f"{sr_api_key}:{sr_api_secret}",
-            })
+            self._sr_client = SchemaRegistryClient(
+                {
+                    "url": schema_registry_url,
+                    "basic.auth.user.info": f"{sr_api_key}:{sr_api_secret}",
+                }
+            )
 
     # ------------------------------------------------------------------
     # Class-method constructor
@@ -200,10 +206,10 @@ class CsvKafkaPublisher:
         self,
         csv_file: Path,
         topic: str,
-        key_column: Optional[str] = None,
-        schema_str: Optional[str] = None,
-        timestamp_columns: Optional[List[str]] = None,
-    ) -> Dict[str, int]:
+        key_column: str | None = None,
+        schema_str: str | None = None,
+        timestamp_columns: list[str] | None = None,
+    ) -> dict[str, int]:
         """
         Publish all rows from *csv_file* to *topic* using Avro serialization.
 
@@ -224,7 +230,7 @@ class CsvKafkaPublisher:
         results = {"total": 0, "success": 0, "failed": 0}
 
         try:
-            with open(csv_file, "r", encoding="utf-8") as f:
+            with open(csv_file, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
                 fieldnames = list(reader.fieldnames or [])
@@ -263,7 +269,7 @@ class CsvKafkaPublisher:
         ts_col_set = set(timestamp_columns or [])
 
         # Build converter function
-        def row_to_avro(record: Dict[str, Any], ctx) -> Dict[str, Any]:
+        def row_to_avro(record: dict[str, Any], ctx) -> dict[str, Any]:
             out = {}
             for k, v in record.items():
                 if k in ts_col_set and v:
@@ -280,10 +286,7 @@ class CsvKafkaPublisher:
                     out[k] = v if v != "" else None
             return out
 
-        self.logger.info(
-            f"Publishing {len(rows)} rows from {csv_file} to topic '{topic}' "
-            f"(key={key_column})"
-        )
+        self.logger.info(f"Publishing {len(rows)} rows from {csv_file} to topic '{topic}' (key={key_column})")
 
         if self.dry_run:
             self.logger.info("[DRY RUN] No messages will be published.")
@@ -294,18 +297,20 @@ class CsvKafkaPublisher:
         avro_serializer = AvroSerializer(self._sr_client, schema_str, row_to_avro)
         string_serializer = StringSerializer("utf_8")
 
-        producer = SerializingProducer({
-            "bootstrap.servers": self.bootstrap_servers,
-            "sasl.mechanisms": "PLAIN",
-            "security.protocol": "SASL_SSL",
-            "sasl.username": self.api_key,
-            "sasl.password": self.api_secret,
-            "linger.ms": 10,
-            "batch.size": 16384,
-            "compression.type": "snappy",
-            "key.serializer": string_serializer,
-            "value.serializer": avro_serializer,
-        })
+        producer = SerializingProducer(
+            {
+                "bootstrap.servers": self.bootstrap_servers,
+                "sasl.mechanisms": "PLAIN",
+                "security.protocol": "SASL_SSL",
+                "sasl.username": self.api_key,
+                "sasl.password": self.api_secret,
+                "linger.ms": 10,
+                "batch.size": 16384,
+                "compression.type": "snappy",
+                "key.serializer": string_serializer,
+                "value.serializer": avro_serializer,
+            }
+        )
 
         def _delivery_cb(err, msg):
             if err:
@@ -330,8 +335,7 @@ class CsvKafkaPublisher:
             if idx % 1000 == 0:
                 producer.flush()
                 self.logger.info(
-                    f"Progress: {idx}/{results['total']} "
-                    f"({results['success']} ok, {results['failed']} failed)"
+                    f"Progress: {idx}/{results['total']} ({results['success']} ok, {results['failed']} failed)"
                 )
 
         self.logger.info("Flushing remaining messages...")
@@ -343,7 +347,8 @@ class CsvKafkaPublisher:
 # Schema resolution helper for main()
 # ---------------------------------------------------------------------------
 
-def _resolve_schema(args, csv_file: Path, fieldnames: List[str]) -> Optional[str]:
+
+def _resolve_schema(args, csv_file: Path, fieldnames: list[str]) -> str | None:
     """Resolve Avro schema: explicit file → sibling .avsc → auto-generate."""
     logger = logging.getLogger(__name__)
 
@@ -378,6 +383,7 @@ def _resolve_schema(args, csv_file: Path, fieldnames: List[str]) -> Optional[str
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="publish_csv_to_kafka",
@@ -403,24 +409,29 @@ Examples:
   %(prog)s --csv-file data/fema_claims.csv --topic fema_claims --dry-run
         """,
     )
-    parser.add_argument("--csv-file", type=Path, required=True,
-                        help="CSV file to publish")
-    parser.add_argument("--topic", required=True,
-                        help="Destination Kafka topic name")
-    parser.add_argument("--key-column",
-                        help="CSV column to use as the Kafka message key "
-                             "(default: first column)")
-    parser.add_argument("--schema-file",
-                        help="Avro schema JSON file (.avsc). If omitted, auto-discovered "
-                             "from a sibling .avsc file or generated from CSV headers.")
-    parser.add_argument("--timestamp-columns",
-                        help="Comma-separated list of CSV columns holding ISO-8601 "
-                             "timestamps to encode as timestamp-millis "
-                             "(auto-detected from schema if schema is provided)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Validate inputs without publishing any messages")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Enable verbose/debug logging")
+    parser.add_argument("--csv-file", type=Path, required=True, help="CSV file to publish")
+    parser.add_argument("--topic", required=True, help="Destination Kafka topic name")
+    parser.add_argument(
+        "--key-column",
+        help="CSV column to use as the Kafka message key (default: first column)",
+    )
+    parser.add_argument(
+        "--schema-file",
+        help="Avro schema JSON file (.avsc). If omitted, auto-discovered "
+        "from a sibling .avsc file or generated from CSV headers.",
+    )
+    parser.add_argument(
+        "--timestamp-columns",
+        help="Comma-separated list of CSV columns holding ISO-8601 "
+        "timestamps to encode as timestamp-millis "
+        "(auto-detected from schema if schema is provided)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs without publishing any messages",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose/debug logging")
     return parser
 
 
@@ -430,10 +441,7 @@ def main() -> int:
     logger = setup_logging(args.verbose)
 
     if not CONFLUENT_KAFKA_AVAILABLE:
-        logger.error(
-            "confluent-kafka is not installed. "
-            "Run: uv pip install confluent-kafka"
-        )
+        logger.error("confluent-kafka is not installed. Run: uv pip install confluent-kafka")
         return 1
 
     if not args.csv_file.exists():
@@ -442,7 +450,7 @@ def main() -> int:
 
     # Peek at headers for schema resolution
     try:
-        with open(args.csv_file, "r", encoding="utf-8") as f:
+        with open(args.csv_file, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             _ = next(reader)  # advance to get fieldnames
             fieldnames = list(reader.fieldnames or [])

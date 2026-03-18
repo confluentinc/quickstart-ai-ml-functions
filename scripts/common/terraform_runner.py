@@ -49,7 +49,7 @@ def run_terraform(env_path: Path, auto_approve: bool = True) -> bool:
 
         return True
 
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         print(f"✗ Terraform failed in {env_path.name}")
         return False
     except FileNotFoundError:
@@ -91,7 +91,7 @@ def run_terraform_destroy(env_path: Path, auto_approve: bool = True) -> bool:
 
         return True
 
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         print(f"✗ Terraform destroy failed in {env_path.name}")
         return False
     except FileNotFoundError:
@@ -114,7 +114,7 @@ def _generate_deployment_summary(env_path: Path) -> None:
             cwd=env_path,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
 
         # Parse terraform outputs
@@ -123,7 +123,11 @@ def _generate_deployment_summary(env_path: Path) -> None:
         # Extract cloud_provider from terraform output, default to "aws"
         cloud_provider = "aws"
         if "cloud_provider" in tf_outputs:
-            cloud_provider = tf_outputs["cloud_provider"].get("value", "aws") if isinstance(tf_outputs["cloud_provider"], dict) else tf_outputs["cloud_provider"]
+            cloud_provider = (
+                tf_outputs["cloud_provider"].get("value", "aws")
+                if isinstance(tf_outputs["cloud_provider"], dict)
+                else tf_outputs["cloud_provider"]
+            )
 
         # Generate markdown file
         output_file = env_path / "DEPLOYED_RESOURCES.md"

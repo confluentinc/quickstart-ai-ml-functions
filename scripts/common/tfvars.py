@@ -9,10 +9,9 @@ Provides functions for:
 
 import shutil
 from pathlib import Path
-from typing import Dict, Optional
 
 
-def get_credential_value(creds: Dict[str, str], key: str) -> Optional[str]:
+def get_credential_value(creds: dict[str, str], key: str) -> str | None:
     """
     Get credential value, checking both TF_VAR_ prefixed and non-prefixed keys.
 
@@ -47,7 +46,7 @@ def write_tfvars_file(tfvars_path: Path, content: str) -> bool:
         tfvars_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write new content
-        with open(tfvars_path, 'w') as f:
+        with open(tfvars_path, "w") as f:
             f.write(content)
 
         return True
@@ -61,7 +60,7 @@ def generate_core_tfvars_content(
     region: str,
     api_key: str,
     api_secret: str,
-    cloud_provider: Optional[str] = None,
+    cloud_provider: str | None = None,
 ) -> str:
     """
     Generate terraform.tfvars content for Core module.
@@ -89,11 +88,7 @@ cloud_provider = "{provider}"
 
 
 def write_tfvars_for_deployment(
-    root: Path,
-    cloud: str,
-    region: str,
-    creds: Dict[str, str],
-    envs_to_deploy: list
+    root: Path, cloud: str, region: str, creds: dict[str, str], envs_to_deploy: list
 ) -> None:
     """
     Write terraform.tfvars files for all environments being deployed.
@@ -112,7 +107,10 @@ def write_tfvars_for_deployment(
         if api_key and api_secret:
             core_tfvars_path = root / "terraform" / "core" / "terraform.tfvars"
             content = generate_core_tfvars_content(
-                cloud, region, api_key, api_secret,
+                cloud,
+                region,
+                api_key,
+                api_secret,
                 cloud_provider=cloud,
             )
             if write_tfvars_file(core_tfvars_path, content):

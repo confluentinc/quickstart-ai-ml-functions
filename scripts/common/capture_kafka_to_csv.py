@@ -56,13 +56,17 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
-    from confluent_kafka import DeserializingConsumer, KafkaError, KafkaException
-    from confluent_kafka import Consumer
+    from confluent_kafka import (
+        DeserializingConsumer,
+        KafkaError,
+        KafkaException,
+    )
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroDeserializer
+
     CONFLUENT_KAFKA_AVAILABLE = True
 except ImportError:
     CONFLUENT_KAFKA_AVAILABLE = False
@@ -70,10 +74,10 @@ except ImportError:
 from .logging_utils import setup_logging
 from .terraform import extract_kafka_credentials, get_project_root
 
-
 # ---------------------------------------------------------------------------
 # Value conversion helpers
 # ---------------------------------------------------------------------------
+
 
 def _value_to_str(v: Any) -> str:
     """Convert a deserialized Avro value to a CSV-safe string."""
@@ -94,7 +98,7 @@ def _value_to_str(v: Any) -> str:
     return str(v)
 
 
-def _flatten_avro_record(record: Dict[str, Any]) -> Dict[str, str]:
+def _flatten_avro_record(record: dict[str, Any]) -> dict[str, str]:
     """Convert all values in a deserialized Avro record to plain strings for CSV."""
     return {k: _value_to_str(v) for k, v in record.items()}
 
@@ -102,6 +106,7 @@ def _flatten_avro_record(record: Dict[str, Any]) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 # JSONL → CSV conversion (for raw-capture fallback files)
 # ---------------------------------------------------------------------------
+
 
 def convert_jsonl_to_csv(jsonl_file: Path, output_csv: Path, logger: logging.Logger) -> int:
     """
@@ -118,10 +123,10 @@ def convert_jsonl_to_csv(jsonl_file: Path, output_csv: Path, logger: logging.Log
     Returns:
         Number of rows written.
     """
-    rows: List[Dict[str, str]] = []
-    fieldnames: Optional[List[str]] = None
+    rows: list[dict[str, str]] = []
+    fieldnames: list[str] | None = None
 
-    with open(jsonl_file, "r", encoding="utf-8") as f:
+    with open(jsonl_file, encoding="utf-8") as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -158,6 +163,7 @@ def convert_jsonl_to_csv(jsonl_file: Path, output_csv: Path, logger: logging.Log
 # Capture class
 # ---------------------------------------------------------------------------
 
+
 class KafkaCsvCapture:
     """
     Consumes a Kafka topic and writes records to a CSV file.
@@ -186,10 +192,12 @@ class KafkaCsvCapture:
         self.sr_api_secret = sr_api_secret
         self.logger = logging.getLogger(__name__)
 
-        self._sr_client = SchemaRegistryClient({
-            "url": schema_registry_url,
-            "basic.auth.user.info": f"{sr_api_key}:{sr_api_secret}",
-        })
+        self._sr_client = SchemaRegistryClient(
+            {
+                "url": schema_registry_url,
+                "basic.auth.user.info": f"{sr_api_key}:{sr_api_secret}",
+            }
+        )
 
     # ------------------------------------------------------------------
     # Class-method constructor
@@ -223,7 +231,7 @@ class KafkaCsvCapture:
         self,
         topic: str,
         output_file: Path,
-        max_records: Optional[int] = None,
+        max_records: int | None = None,
         from_beginning: bool = False,
         idle_timeout_seconds: int = 30,
     ) -> int:
@@ -261,25 +269,19 @@ class KafkaCsvCapture:
 
         consumer = DeserializingConsumer(consumer_config)
         consumer.subscribe([topic])
-        self.logger.info(
-            f"Subscribed to '{topic}' "
-            f"({'from beginning' if from_beginning else 'from latest'})"
-        )
+        self.logger.info(f"Subscribed to '{topic}' ({'from beginning' if from_beginning else 'from latest'})")
 
-        records: List[Dict[str, str]] = []
-        fieldnames: Optional[List[str]] = None
-        schema_str: Optional[str] = None
-        fallback_mode = False   # True when Avro decode failed → raw JSONL fallback
-        raw_records: List[dict] = []  # used only in fallback_mode
+        records: list[dict[str, str]] = []
+        fieldnames: list[str] | None = None
+        schema_str: str | None = None
+        fallback_mode = False  # True when Avro decode failed → raw JSONL fallback
+        raw_records: list[dict] = []  # used only in fallback_mode
         last_message_time = time.time()
 
         if max_records:
             self.logger.info(f"Capturing up to {max_records} records from '{topic}'")
         else:
-            self.logger.info(
-                f"Capturing ALL records from '{topic}' "
-                f"(idle timeout: {idle_timeout_seconds}s)"
-            )
+            self.logger.info(f"Capturing ALL records from '{topic}' (idle timeout: {idle_timeout_seconds}s)")
 
         try:
             self.logger.info("Consuming messages — press Ctrl+C to stop early...")
@@ -288,9 +290,7 @@ class KafkaCsvCapture:
 
                 if msg is None:
                     if time.time() - last_message_time > idle_timeout_seconds:
-                        self.logger.info(
-                            f"No new messages for {idle_timeout_seconds}s — stopping."
-                        )
+                        self.logger.info(f"No new messages for {idle_timeout_seconds}s — stopping.")
                         break
                     continue
 
@@ -383,21 +383,19 @@ class KafkaCsvCapture:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _try_json_fallback(self, msg, consumer) -> Optional[Dict]:
+    def _try_json_fallback(self, msg, consumer) -> dict | None:
         """Try decoding the raw message value as UTF-8 JSON."""
         # DeserializingConsumer has already consumed the raw bytes.
         # We cannot re-access them after deserialization. Return None to signal failure.
         # (A proper fallback would require switching to a plain Consumer.)
         return None
 
-    def _fetch_schema(self, topic: str) -> Optional[str]:
+    def _fetch_schema(self, topic: str) -> str | None:
         """Fetch the latest value schema for *topic* from Schema Registry."""
         subject = f"{topic}-value"
         try:
             registered = self._sr_client.get_latest_version(subject)
-            self.logger.info(
-                f"Fetched schema version {registered.version} for subject '{subject}'"
-            )
+            self.logger.info(f"Fetched schema version {registered.version} for subject '{subject}'")
             return registered.schema.schema_str
         except Exception as e:
             self.logger.warning(f"Could not fetch schema for '{subject}': {e}")
@@ -423,6 +421,7 @@ class KafkaCsvCapture:
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -450,21 +449,32 @@ Examples:
   %(prog)s --convert-jsonl data/raw.jsonl --output data/converted.csv
         """,
     )
-    parser.add_argument("--topic",
-                        help="Kafka topic to consume from")
-    parser.add_argument("--output", type=Path,
-                        help="Output CSV file path")
-    parser.add_argument("--from-beginning", action="store_true",
-                        help="Consume from earliest offset (default: from latest)")
-    parser.add_argument("--max-records", type=int, default=None,
-                        help="Stop after N records (default: unlimited)")
-    parser.add_argument("--timeout", type=int, default=30,
-                        help="Stop after N seconds of no new messages (default: 30)")
-    parser.add_argument("--convert-jsonl", type=Path, metavar="JSONL_FILE",
-                        help="Convert a base64 JSONL file (from a raw capture) to CSV "
-                             "without connecting to Kafka. Requires --output.")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Enable verbose/debug logging")
+    parser.add_argument("--topic", help="Kafka topic to consume from")
+    parser.add_argument("--output", type=Path, help="Output CSV file path")
+    parser.add_argument(
+        "--from-beginning",
+        action="store_true",
+        help="Consume from earliest offset (default: from latest)",
+    )
+    parser.add_argument(
+        "--max-records",
+        type=int,
+        default=None,
+        help="Stop after N records (default: unlimited)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Stop after N seconds of no new messages (default: 30)",
+    )
+    parser.add_argument(
+        "--convert-jsonl",
+        type=Path,
+        metavar="JSONL_FILE",
+        help="Convert a base64 JSONL file (from a raw capture) to CSV without connecting to Kafka. Requires --output.",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose/debug logging")
     return parser
 
 
@@ -500,10 +510,7 @@ def main() -> int:
         return 1
 
     if not CONFLUENT_KAFKA_AVAILABLE:
-        logger.error(
-            "confluent-kafka is not installed. "
-            "Run: uv pip install confluent-kafka"
-        )
+        logger.error("confluent-kafka is not installed. Run: uv pip install confluent-kafka")
         return 1
 
     try:
@@ -539,6 +546,7 @@ def main() -> int:
         logger.error(f"Capture failed: {e}")
         if args.verbose:
             import traceback
+
             logger.error(traceback.format_exc())
         return 1
 
