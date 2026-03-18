@@ -26,10 +26,7 @@ def setup_logging(verbose: bool = False, default_level: str = "INFO", suppress_a
     else:
         level = getattr(logging, default_level.upper(), logging.INFO)
 
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s")
 
     # Suppress verbose Azure SDK logging if requested
     if suppress_azure and not verbose:

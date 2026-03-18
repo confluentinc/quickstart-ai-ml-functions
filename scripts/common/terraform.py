@@ -10,14 +10,12 @@ Provides cross-platform functions for:
 import json
 import logging
 import subprocess
-import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def run_terraform_output(state_path: Path) -> Dict[str, any]:
+def run_terraform_output(state_path: Path) -> dict[str, any]:
     """
     Run terraform output and return the results as a dictionary.
 
@@ -51,7 +49,7 @@ def run_terraform_output(state_path: Path) -> Dict[str, any]:
         raise
 
 
-def find_state_files(cloud_provider: str, base_dir: Path) -> Tuple[Path, Path]:
+def find_state_files(cloud_provider: str, base_dir: Path) -> tuple[Path, Path]:
     """
     Find terraform state files for the given cloud provider.
 
@@ -78,9 +76,7 @@ def find_state_files(cloud_provider: str, base_dir: Path) -> Tuple[Path, Path]:
     return core_state, local_state
 
 
-def extract_kafka_credentials(
-    cloud_provider: str, project_root: Optional[Path] = None
-) -> Dict[str, str]:
+def extract_kafka_credentials(cloud_provider: str, project_root: Path | None = None) -> dict[str, str]:
     """
     Extract Kafka and Schema Registry credentials from terraform state.
 
@@ -161,14 +157,13 @@ def extract_kafka_credentials(
 
     logger.info("Successfully extracted all required credentials")
     logger.info(
-        f"Connecting to cluster '{credentials['cluster_name']}' "
-        f"in environment '{credentials['environment_name']}'"
+        f"Connecting to cluster '{credentials['cluster_name']}' in environment '{credentials['environment_name']}'"
     )
 
     return credentials
 
 
-def validate_terraform_state(cloud_provider: str, project_root: Optional[Path] = None) -> bool:
+def validate_terraform_state(cloud_provider: str, project_root: Path | None = None) -> bool:
     """
     Validate that terraform state files exist and contain required outputs.
 
@@ -202,18 +197,16 @@ def get_project_root() -> Path:
     """
     # First try current working directory and its parents
     cwd = Path.cwd().resolve()
-    for parent in [cwd] + list(cwd.parents):
+    for parent in [cwd, *list(cwd.parents)]:
         if (parent / "pyproject.toml").exists():
             logger.debug(f"Found project root in cwd: {parent}")
             return parent
 
     # Fall back to script location
     current = Path(__file__).resolve()
-    for parent in [current] + list(current.parents):
+    for parent in [current, *list(current.parents)]:
         if (parent / "pyproject.toml").exists():
             logger.debug(f"Found project root from script location: {parent}")
             return parent
 
-    raise FileNotFoundError(
-        "Could not find project root (pyproject.toml not found in any parent directory)"
-    )
+    raise FileNotFoundError("Could not find project root (pyproject.toml not found in any parent directory)")

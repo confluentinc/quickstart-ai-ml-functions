@@ -14,15 +14,14 @@ Usage:
     uv run deployment-summary lab2
 """
 
-import json
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
-def generate_credentials_markdown(cloud_provider: str, tf_outputs: Dict[str, Any], output_path: Path) -> None:
+def generate_credentials_markdown(cloud_provider: str, tf_outputs: dict[str, Any], output_path: Path) -> None:
     """
     Generate DEPLOYED_RESOURCES.md file from Terraform outputs.
 
@@ -39,8 +38,8 @@ def generate_credentials_markdown(cloud_provider: str, tf_outputs: Dict[str, Any
                 return default
             output = tf_outputs[key]
             # If it's a dict with 'value' key (terraform output format)
-            if isinstance(output, dict) and 'value' in output:
-                return str(output['value']) if output['value'] is not None else default
+            if isinstance(output, dict) and "value" in output:
+                return str(output["value"]) if output["value"] is not None else default
             return str(output) if output is not None else default
 
         # Build markdown sections
@@ -75,7 +74,7 @@ def _build_header() -> str:
 ---"""
 
 
-def _build_account_section(tf_outputs: Dict[str, Any], get_output: callable) -> str:
+def _build_account_section(tf_outputs: dict[str, Any], get_output: callable) -> str:
     """Build the Account Information section."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     region = get_output("cloud_region")
@@ -92,7 +91,7 @@ def _build_account_section(tf_outputs: Dict[str, Any], get_output: callable) -> 
 ---"""
 
 
-def _build_cloud_details_section(cloud_provider: str, tf_outputs: Dict[str, Any], get_output: callable) -> str:
+def _build_cloud_details_section(cloud_provider: str, tf_outputs: dict[str, Any], get_output: callable) -> str:
     """Build the Cloud Details section."""
     region = get_output("cloud_region")
 
@@ -114,7 +113,7 @@ def _build_cloud_details_section(cloud_provider: str, tf_outputs: Dict[str, Any]
 ---"""
 
 
-def _build_credentials_section(tf_outputs: Dict[str, Any], get_output: callable) -> str:
+def _build_credentials_section(tf_outputs: dict[str, Any], get_output: callable) -> str:
     """Build the Service Credentials section."""
     # Primary credentials
     org_id = get_output("confluent_organization_id")
@@ -157,7 +156,7 @@ def _build_credentials_section(tf_outputs: Dict[str, Any], get_output: callable)
 ---"""
 
 
-def _build_resource_inventory_section(tf_outputs: Dict[str, Any], get_output: callable) -> str:
+def _build_resource_inventory_section(tf_outputs: dict[str, Any], get_output: callable) -> str:
     """Build the Resource Inventory section."""
     env_id = get_output("confluent_environment_id")
     env_name = get_output("confluent_environment_display_name")
@@ -220,6 +219,7 @@ def main():
     if state_file.exists():
         try:
             import json
+
             with open(state_file) as f:
                 state = json.load(f)
                 outputs = state.get("outputs", {})
@@ -229,7 +229,7 @@ def main():
             print(f"Warning: Could not read cloud provider from state file: {e}")
 
     if not cloud_provider or cloud_provider not in ["aws", "azure"]:
-        print(f"Error: Could not determine cloud provider from terraform state")
+        print("Error: Could not determine cloud provider from terraform state")
         print(f"Expected 'cloud_provider' output in {state_file}")
         sys.exit(1)
 
@@ -241,7 +241,7 @@ def main():
             cwd=terraform_dir,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         tf_outputs = json.loads(result.stdout)
     except subprocess.CalledProcessError as e:

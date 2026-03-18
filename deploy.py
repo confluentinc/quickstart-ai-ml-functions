@@ -18,9 +18,9 @@ import sys
 from dotenv import dotenv_values, set_key
 
 from scripts.common.credentials import (
-    load_or_create_credentials_file,
+    generate_confluent_api_keys,
     load_credentials_json,
-    generate_confluent_api_keys
+    load_or_create_credentials_file,
 )
 from scripts.common.login_checks import check_confluent_login
 from scripts.common.terraform import get_project_root, run_terraform_output
@@ -30,14 +30,25 @@ from scripts.common.ui import prompt_choice, prompt_with_default
 
 # Valid cloud regions
 AWS_REGIONS = [
-    "us-east-1", "us-west-2", "sa-east-1",
-    "ap-southeast-1", "ap-southeast-2", "ap-south-1",
-    "ap-east-1", "ap-northeast-1", "ap-northeast-2"
+    "us-east-1",
+    "us-west-2",
+    "sa-east-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "ap-south-1",
+    "ap-east-1",
+    "ap-northeast-1",
+    "ap-northeast-2",
 ]
 
 AZURE_REGIONS = [
-    "eastus2", "westus", "canadacentral",
-    "northeurope", "westeurope", "eastasia", "centralindia"
+    "eastus2",
+    "westus",
+    "canadacentral",
+    "northeurope",
+    "westeurope",
+    "eastasia",
+    "centralindia",
 ]
 
 
@@ -45,8 +56,11 @@ def main():
     """Main entry point for deploy."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Simple deployment tool for Confluent ML functions")
-    parser.add_argument("--testing", action="store_true",
-                       help="Non-interactive mode using credentials.json (for automated testing)")
+    parser.add_argument(
+        "--testing",
+        action="store_true",
+        help="Non-interactive mode using credentials.json (for automated testing)",
+    )
     args = parser.parse_args()
 
     print("=== Simple Deployment Tool ===\n")
@@ -73,7 +87,7 @@ def main():
             "TF_VAR_cloud_provider": cloud,
         }
 
-        print(f"✓ Credentials loaded from credentials.json")
+        print("✓ Credentials loaded from credentials.json")
         print(f"  Cloud: {cloud}")
         print(f"  Region: {region}")
         print(f"  Deploying: {', '.join(envs_to_deploy)}")
@@ -117,13 +131,7 @@ def main():
 
         # Step 4: Select what to deploy
         envs_to_deploy = []
-        deploy_options = [
-            "Lab 1",
-            "Lab 2",
-            "Lab 3",
-            "Lab 4",
-            "All Labs (1-4)"
-        ]
+        deploy_options = ["Lab 1", "Lab 2", "Lab 3", "Lab 4", "All Labs (1-4)"]
         env_choice = prompt_choice("What would you like to deploy?", deploy_options)
 
         # Map user-friendly choice to deployment targets (core auto-included for labs)
@@ -143,7 +151,10 @@ def main():
 
         # Confluent credentials (always required)
         api_key = prompt_with_default("Confluent Cloud API Key", creds.get("TF_VAR_confluent_cloud_api_key", ""))
-        api_secret = prompt_with_default("Confluent Cloud API Secret", creds.get("TF_VAR_confluent_cloud_api_secret", ""))
+        api_secret = prompt_with_default(
+            "Confluent Cloud API Secret",
+            creds.get("TF_VAR_confluent_cloud_api_secret", ""),
+        )
         set_key(creds_file, "TF_VAR_confluent_cloud_api_key", api_key)
         set_key(creds_file, "TF_VAR_confluent_cloud_api_secret", api_secret)
 
@@ -205,4 +216,4 @@ def main():
 
 
 if __name__ == "__main__":
-        main()
+    main()
