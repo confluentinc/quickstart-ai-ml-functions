@@ -2,19 +2,6 @@
 
 This lab builds a real-time payment fraud detection pipeline on Confluent Cloud using Apache Flink's `ML_DETECT_ANOMALIES` function. Synthetic payment data is generated via the Flink faker connector, and per-customer ARIMA models detect anomalous transaction amounts and unusual country codes.
 
-## What You'll Build
-
-```
-payments_mock (faker table)
-        │
-        ▼
-  ML_DETECT_ANOMALIES          ← per-customer ARIMA models
-  (amount + country_code)
-        │
-        ▼
-fraud_transactions (CTAS)      ← flagged payments only
-```
-
 ## Architecture
 
 | Component | Details |
@@ -37,7 +24,35 @@ Terraform provisions a single Flink DDL statement that creates the `payments_moc
 |----------|-------------|
 | `confluent_flink_statement.create_payments_mock` | Creates the `payments_mock` table backed by the faker connector |
 
+## Data Flow
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Flink faker connector  (10 rows/sec)                           │
+│  payments_mock                                                  │
+│                                                                 │
+│  50 customer IDs · 16 fields · event-time watermark (5s)        │
+│  fraud signals: amount=$8,750 (~0.5%) · country=NG (~0.5%)     │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  ML_DETECT_ANOMALIES  (Confluent Flink UI)                      │
+│                                                                 │
+│  ┌──────────────────────────┐  ┌──────────────────────────┐    │
+│  │  ARIMA model per         │  │  ARIMA model per         │    │
+│  │  customer · amount       │  │  customer · country_code │    │
+│  └──────────────────────────┘  └──────────────────────────┘    │
+│                 amount_anom.is_anomaly                          │
+│                 loc_anom.is_anomaly                             │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │  WHERE is_anomaly = TRUE
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  fraud_transactions  (CTAS output table)                        │
+│                                                                 │
+│  is_amount_anomaly · is_location_anomaly · all payment fields   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Data Schema
