@@ -34,33 +34,21 @@ def cleanup_terraform_artifacts(env_path: Path) -> None:
         env_path: Path to terraform environment directory
     """
     try:
-        # Remove all .tfstate files (including backups)
-        for tfstate_file in env_path.glob("*.tfstate*"):
-            tfstate_file.unlink()
-
-        # Remove all .tfvars files (including backups)
-        for tfvars_file in env_path.glob("*.tfvars*"):
-            tfvars_file.unlink()
+        # Remove generated state and variable files
+        for pattern in ("*.tfstate*", "*.tfvars*"):
+            for f in env_path.glob(pattern):
+                f.unlink()
 
         # Remove .terraform directory
         terraform_dir = env_path / ".terraform"
         if terraform_dir.exists():
             shutil.rmtree(terraform_dir)
 
-        # Remove .terraform.lock.hcl file
-        lock_file = env_path / ".terraform.lock.hcl"
-        if lock_file.exists():
-            lock_file.unlink()
-
-        # Remove auto-generated Flink SQL summary file
-        flink_sql_summary = env_path / "FLINK_SQL_COMMANDS.md"
-        if flink_sql_summary.exists():
-            flink_sql_summary.unlink()
-
-        # Remove legacy mcp_commands.txt file
-        mcp_commands = env_path / "mcp_commands.txt"
-        if mcp_commands.exists():
-            mcp_commands.unlink()
+        # Remove individual generated files
+        for name in (".terraform.lock.hcl", "FLINK_SQL_COMMANDS.md", "mcp_commands.txt"):
+            path = env_path / name
+            if path.exists():
+                path.unlink()
 
     except Exception:
         # Silently continue if cleanup fails - destroy was successful

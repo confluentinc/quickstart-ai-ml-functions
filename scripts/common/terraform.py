@@ -11,11 +11,12 @@ import json
 import logging
 import subprocess
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def run_terraform_output(state_path: Path) -> dict[str, any]:
+def run_terraform_output(state_path: Path) -> dict[str, Any]:
     """
     Run terraform output and return the results as a dictionary.
 
@@ -197,14 +198,14 @@ def get_project_root() -> Path:
     """
     # First try current working directory and its parents
     cwd = Path.cwd().resolve()
-    for parent in [cwd, *list(cwd.parents)]:
+    for parent in [cwd, *cwd.parents]:
         if (parent / "pyproject.toml").exists():
             logger.debug(f"Found project root in cwd: {parent}")
             return parent
 
     # Fall back to script location
     current = Path(__file__).resolve()
-    for parent in [current, *list(current.parents)]:
+    for parent in [current, *current.parents]:
         if (parent / "pyproject.toml").exists():
             logger.debug(f"Found project root from script location: {parent}")
             return parent
