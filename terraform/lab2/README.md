@@ -37,18 +37,7 @@ Terraform provisions a single Flink DDL statement that creates the `payments_moc
 |----------|-------------|
 | `confluent_flink_statement.create_payments_mock` | Creates the `payments_mock` table backed by the faker connector |
 
-### Deploy
 
-```bash
-cd terraform/lab2
-terraform init
-terraform apply
-```
-
-### Destroy
-
-```bash
-terraform destroy
 ```
 
 ## Data Schema
