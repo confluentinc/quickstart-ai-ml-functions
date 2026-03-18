@@ -62,9 +62,7 @@ WITH with_anom AS (
   FROM payments_mock AS p
 )
 SELECT
-  payment_id, customer_id, merchant_name, merchant_category,
-  amount, payment_method, card_type, channel,
-  transaction_type, country_code, transaction_ts,
+  p.*,
   COALESCE(amount_anom.is_anomaly, FALSE) AS is_amount_anomaly,
   COALESCE(cash_anom.is_anomaly, FALSE)   AS is_cash_advance_anomaly
 FROM with_anom
@@ -80,6 +78,8 @@ To see the fraud detection anomalies, run:
 ```sql
 SELECT * FROM fraud_transactions;
 ```
+
+<img src="./assets/lab2/anomalies.png" alt="Fraud transactions results" width="100%" />
 
 ## Navigation
 
