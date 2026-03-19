@@ -80,8 +80,6 @@ To see the fraud detection anomalies, run:
 SELECT * FROM payments_flagged;
 ```
 
-<img src="./assets/lab2/anomalies.png" alt="Fraud transactions results" width="100%" />
-
 ## Navigation
 
 - **← Back to Overview**: [Main README](./README.md)

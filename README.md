@@ -2,7 +2,31 @@
 
 [![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/?utm_campaign=tm.pmm_cd.q4fy25-quickstart-ai-ml-functions&utm_source=github&utm_medium=demo)
 
-Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/confluent-cloud/). This quickstart provisions core Confluent infrastructure (Kafka, Flink, Schema Registry) and includes placeholder lab folders ready to be populated with ML function exercises.
+Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/confluent-cloud/). This quickstart provisions core Confluent infrastructure (Kafka, Flink, Schema Registry) and includes hands-on labs using Confluent's built-in Flink ML functions.
+
+<table>
+<tr>
+<th width="25%">Lab</th>
+<th width="75%">Description</th>
+</tr>
+<tr>
+<td><a href="./Lab1-Walkthrough.md"><strong>Lab 1 – Predictive Maintenance</strong></a></td>
+<td>Real-time CNC machine anomaly detection using per-machine ARIMA models on vibration signals — flags bearing degradation before failure occurs.<br><br><img src="./assets/lab1/lab1-architecture.png" alt="Lab 1 architecture diagram"></td>
+</tr>
+<tr>
+<td><a href="./Lab2-Walkthrough.md"><strong>Lab 2 – Payment Fraud Detection</strong></a></td>
+<td>Real-time fraud detection on a synthetic payments stream using <code>ML_DETECT_ANOMALIES</code> with ARIMA to flag spikes in average transaction size and unusual cash advance patterns.</td>
+</tr>
+<tr>
+<td><strong>Lab 3 – Coming Soon</strong></td>
+<td> </td>
+</tr>
+<tr>
+<td><strong>Lab 4 – Coming Soon</strong></td>
+<td> </td>
+</tr>
+</table>
+
 
 ## Prerequisites
 
@@ -47,7 +71,7 @@ cd quickstart-ai-ml-functions
 uv run deploy
 ```
 
-That's it! The script will guide you through setup and deployment of your chosen lab(s).
+That's it! The script will guide you through setup and deploy all labs by default. To deploy a single lab: `uv run deploy lab1`
 
 ## Directory Structure
 
@@ -59,7 +83,7 @@ quickstart-ai-ml-functions/
 │   ├── lab2/              # Lab 2 resources
 │   ├── lab3/              # Lab 3 resources
 │   └── lab4/              # Lab 4 resources
-├── deploy.py              # Start here with uv run deploy
+├── scripts/deploy.py      # Start here with uv run deploy
 └── scripts/               # Python utilities invoked with uv
 ```
 

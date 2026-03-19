@@ -51,7 +51,7 @@ AZURE_REGIONS = [
 ]
 
 
-def main():
+def main() -> None:
     """Main entry point for deploy."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Simple deployment tool for Confluent ML functions")
@@ -64,7 +64,7 @@ def main():
         "lab",
         nargs="?",
         choices=["lab1", "lab2", "lab3", "lab4"],
-        help="Lab to deploy directly, e.g. 'lab2' (skips the lab selection menu)",
+        help="Lab to deploy (e.g. 'lab2'). Omit to deploy all labs.",
     )
     args = parser.parse_args()
 
@@ -134,26 +134,13 @@ def main():
                 creds["TF_VAR_confluent_cloud_api_key"] = api_key
                 creds["TF_VAR_confluent_cloud_api_secret"] = api_secret
 
-        # Step 4: Select what to deploy
+        # Step 4: Determine what to deploy
         if args.lab:
             envs_to_deploy = ["core", args.lab]
             print(f"Deploying: {args.lab} (specified on command line)")
         else:
-            envs_to_deploy = []
-            deploy_options = ["Lab 1", "Lab 2", "Lab 3", "Lab 4", "All Labs (1-4)"]
-            env_choice = prompt_choice("What would you like to deploy?", deploy_options)
-
-            # Map user-friendly choice to deployment targets (core auto-included for labs)
-            if env_choice == "Lab 1":
-                envs_to_deploy = ["core", "lab1"]
-            elif env_choice == "Lab 2":
-                envs_to_deploy = ["core", "lab2"]
-            elif env_choice == "Lab 3":
-                envs_to_deploy = ["core", "lab3"]
-            elif env_choice == "Lab 4":
-                envs_to_deploy = ["core", "lab4"]
-            elif env_choice == "All Labs (1-4)":
-                envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
+            envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
+            print("Deploying: all labs (default)")
 
         # Step 5: Prompt for required credentials
         print("\n--- Credential Configuration ---")

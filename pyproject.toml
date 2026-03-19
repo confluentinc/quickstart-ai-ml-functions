@@ -57,7 +57,7 @@ dev = [
 
 
 [project.scripts]
-deploy = "deploy:main"
+deploy = "scripts.deploy:main"
 destroy = "scripts.common.destroy:main"
 #
 generate_deployment_summary = "scripts.common.generate_deployment_summary:main"

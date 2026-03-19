@@ -4,17 +4,11 @@ data "terraform_remote_state" "core" {
 }
 
 locals {
-  cloud_provider = data.terraform_remote_state.core.outputs.cloud_provider
-  cloud_region   = data.terraform_remote_state.core.outputs.cloud_region
+  flink_rest_endpoint = data.terraform_remote_state.core.outputs.confluent_flink_rest_endpoint
 }
 
 data "confluent_organization" "main" {}
 
-# Get Flink region data
-data "confluent_flink_region" "lab3_flink_region" {
-  cloud  = upper(local.cloud_provider)
-  region = local.cloud_region
-}
 # Add lab-specific resources below
 
 
@@ -32,7 +26,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
@@ -90,7 +84,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_table" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
@@ -138,7 +132,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_insert" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
