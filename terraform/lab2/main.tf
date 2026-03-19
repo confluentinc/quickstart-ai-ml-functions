@@ -20,23 +20,23 @@ locals {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Flink DDL: payments_mock (faker data generator)
+# Flink DDL: payments (faker data generator)
 #
 # Streams synthetic payment events using the Flink faker connector.
 # - 50 fixed customer IDs so each customer accumulates history quickly
 # - amount: 191 normal values ($12-$110) + 1 anomalous spike ($8,750) ~0.5%
 # - transaction_ts declared as event-time attribute via WATERMARK
 # ─────────────────────────────────────────────────────────────────────────────
-resource "confluent_flink_statement" "create_payments_mock" {
+resource "confluent_flink_statement" "create_payments" {
   organization { id = local.organization_id }
   environment  { id = local.environment_id }
   compute_pool { id = local.compute_pool_id }
   principal    { id = local.service_account_id }
 
-  statement_name = "lab2-create-payments-mock-${local.random_id}"
+  statement_name = "lab2-create-payments-${local.random_id}"
 
   statement = <<-SQL
-    CREATE TABLE IF NOT EXISTS `payments_mock` (
+    CREATE TABLE IF NOT EXISTS `payments` (
       `payment_id`        VARCHAR(2147483647) NOT NULL,
       `customer_id`       VARCHAR(2147483647) NOT NULL,
       `merchant_name`     VARCHAR(2147483647) NOT NULL,

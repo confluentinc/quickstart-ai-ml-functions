@@ -13,6 +13,7 @@
 .serena/
 *.swp
 *.swo
+.pre-commit-config.yaml
 
 # Claude Code
 .claude/

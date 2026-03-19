@@ -10,25 +10,25 @@ This lab demonstrates a real-time payment fraud detection pipeline using the bui
 uv run deploy lab2
 ```
 
-This provisions the core Confluent Cloud environment, along with the `payments_mock` source table, which uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html)generating ~10 synthetic payment records per second across 50 customers.
+This provisions the core Confluent Cloud environment, along with the `payments` source table, which uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html)generating ~10 synthetic payment records per second across 50 customers.
 
 ## Walkthrough
 
 ### Data Generation
 
-The `payments_mock` topic uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) to generate 10 payment records per second across 50 customers. The synthetic data stream contains two financial fraud signals, which we aim to detect with `ML_DETECT_ANOMALIES`:
+The `payments` topic uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) to generate 10 payment records per second across 50 customers. The synthetic data stream contains two financial fraud signals, which we aim to detect with `ML_DETECT_ANOMALIES`:
 
 - **Transaction size spikes:** ~0.5% of transactions have an amount of `$8,750` (vs. a normal range of `$12.50`–`$110.75`)
 - **Cash advance spikes:** `CASH_ADVANCE` transaction type appears at ~10% baseline; per-customer spikes above that baseline over a rolling time window are flagged
 
-### 1. Create the `fraud_transactions` Table
+### 1. Create the `payments_flagged` Table
 
 Open a SQL workspace in the [Confluent Cloud Flink UI](https://confluent.cloud/go/flink), select your environment and compute pool, and run the following query.
 
-Two `ML_DETECT_ANOMALY` models run per customer — one on transaction amount, one on transaction type. Anytime either model detects fraud, it emits an anomaly event to the`fraud_transactions` topic. 
+Two `ML_DETECT_ANOMALY` models run per customer — one on transaction amount, one on transaction type. Anytime either model detects fraud, it emits an anomaly event to the`payments_flagged` topic.
 
 ```sql
-CREATE TABLE fraud_transactions AS
+CREATE TABLE payments_flagged AS
 WITH with_anom AS (
   SELECT
     p.*,
@@ -59,7 +59,7 @@ WITH with_anom AS (
       RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS cash_anom
     
-  FROM payments_mock AS p
+  FROM payments AS p
 )
 SELECT
   p.*,
@@ -76,7 +76,7 @@ WHERE amount_anom.is_anomaly IS TRUE OR cash_anom.is_anomaly IS TRUE;
 To see the fraud detection anomalies, run:
 
 ```sql
-SELECT * FROM fraud_transactions;
+SELECT * FROM payments_flagged;
 ```
 
 <img src="./assets/lab2/anomalies.png" alt="Fraud transactions results" width="100%" />
