@@ -171,8 +171,6 @@ Now we apply **Flink’s built-in ML anomaly detection function** to detect abno
 
 The algorithm continuously learns the expected behavior of each machine and flags deviations.
 
-f(x) = vibration
-
 Run the following query in the Flink SQL workspace:
 
 ```sql
@@ -215,7 +213,7 @@ If vibration rises unexpectedly relative to historical behavior, the system flag
 
 ---
 
-![Anamoly Detection](./assets/lab1/anamoly.png)
+![Anomaly Detection](./assets/lab1/anamoly.png)
 
 # Creating a Continuous Anomaly Detection Job
 
@@ -225,37 +223,37 @@ Next, convert the query into a streaming job that emits **only anomalous machine
 CREATE TABLE equipment_anomalies AS
 SELECT
     machine_id,
-    timestamp,
-    vibration,
-    anomaly_score
+    ts,
+    vibration_smoothed,
+    anomaly
 FROM (
     SELECT
-    machine_id,
-    ts,
-    vibration_raw,
-    vibration_smoothed,
-    efficiency_index,
-    ML_DETECT_ANOMALIES(
-        vibration_smoothed,
+        machine_id,
         ts,
-        JSON_OBJECT(
-            'p'               VALUE 1,
-            'q'               VALUE 1,
-            'd'               VALUE 1,
-            'minTrainingSize' VALUE 50,
-            'maxTrainingSize' VALUE 300,
-            'evalWindowSize'  VALUE 20,
-            'horizon'         VALUE 5,
-            'enableStl'       VALUE FALSE
-        )
-    ) OVER (
-        PARTITION BY machine_id
-        ORDER BY ts
-        RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    ) AS anomaly
-FROM machine_health_features;
+        vibration_raw,
+        vibration_smoothed,
+        efficiency_index,
+        ML_DETECT_ANOMALIES(
+            vibration_smoothed,
+            ts,
+            JSON_OBJECT(
+                'p'               VALUE 1,
+                'q'               VALUE 1,
+                'd'               VALUE 1,
+                'minTrainingSize' VALUE 50,
+                'maxTrainingSize' VALUE 300,
+                'evalWindowSize'  VALUE 20,
+                'horizon'         VALUE 5,
+                'enableStl'       VALUE FALSE
+            )
+        ) OVER (
+            PARTITION BY machine_id
+            ORDER BY ts
+            RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS anomaly
+    FROM machine_health_features
 )
-WHERE anomaly_score.is_anomaly = TRUE;
+WHERE anomaly.is_anomaly = TRUE;
 ```
 
 This table continuously outputs **detected machine anomalies**.
