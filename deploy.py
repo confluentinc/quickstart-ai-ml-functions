@@ -19,7 +19,6 @@ from dotenv import dotenv_values, set_key
 
 from scripts.common.credentials import (
     generate_confluent_api_keys,
-    load_credentials_json,
     load_or_create_credentials_file,
 )
 from scripts.common.login_checks import check_confluent_login
@@ -76,24 +75,24 @@ def main():
     root = get_project_root()
     print(f"Project root: {root}")
 
-    # TESTING MODE: Load credentials from JSON and skip all prompts
+    # TESTING MODE: Load credentials from credentials.env and skip all prompts
     if args.testing:
-        creds = load_credentials_json(root)
+        _, creds = load_or_create_credentials_file(root)
 
-        # Extract values from JSON (ensure cloud provider is lowercase)
-        cloud = creds["cloud"].lower()
-        region = creds["region"]
+        # Extract values from .env (ensure cloud provider is lowercase)
+        cloud = creds.get("TF_VAR_cloud_provider", "").lower()
+        region = creds.get("TF_VAR_cloud_region", "")
         envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
 
         # Build environment variables for Terraform
         env_vars = {
-            "TF_VAR_confluent_cloud_api_key": creds["confluent_cloud_api_key"],
-            "TF_VAR_confluent_cloud_api_secret": creds["confluent_cloud_api_secret"],
+            "TF_VAR_confluent_cloud_api_key": creds.get("TF_VAR_confluent_cloud_api_key", ""),
+            "TF_VAR_confluent_cloud_api_secret": creds.get("TF_VAR_confluent_cloud_api_secret", ""),
             "TF_VAR_cloud_region": region,
             "TF_VAR_cloud_provider": cloud,
         }
 
-        print("✓ Credentials loaded from credentials.json")
+        print("✓ Credentials loaded from credentials.env")
         print(f"  Cloud: {cloud}")
         print(f"  Region: {region}")
         print(f"  Deploying: {', '.join(envs_to_deploy)}")

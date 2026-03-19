@@ -63,10 +63,11 @@ WITH with_anom AS (
 )
 SELECT
   p.*,
-  COALESCE(amount_anom.is_anomaly, FALSE) AS is_amount_anomaly,
-  COALESCE(cash_anom.is_anomaly, FALSE)   AS is_cash_advance_anomaly
-FROM with_anom
-WHERE amount_anom.is_anomaly IS TRUE OR cash_anom.is_anomaly IS TRUE;
+  COALESCE(CAST(p.amount AS DOUBLE) > p.amount_anom.upper_bound, FALSE) AS is_amount_anomaly,
+  COALESCE((CASE WHEN p.transaction_type = 'CASH_ADVANCE' THEN 1.0 ELSE 0.0 END) > p.cash_anom.upper_bound, FALSE) AS is_cash_advance_anomaly
+FROM with_anom AS p
+WHERE CAST(p.amount AS DOUBLE) > p.amount_anom.upper_bound
+   OR (CASE WHEN p.transaction_type = 'CASH_ADVANCE' THEN 1.0 ELSE 0.0 END) > p.cash_anom.upper_bound;
 ```
 
 > [!NOTE]
