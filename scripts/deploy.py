@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Simple deployment script for Confluent ML Functions quickstart.
-Uses credentials from credentials.env or credentials.json and deploys via Terraform.
+Uses credentials from credentials.env and deploys via Terraform.
 
 IMPORTANT: Interactive mode always uses hardcoded regions:
 - AWS: us-east-1
 - Azure: eastus2
 
-Testing mode (--testing flag) respects the region in credentials.json,
+Testing mode (--testing flag) respects the region in credentials.env,
 allowing developers to override the default regions if needed.
 """
 
@@ -19,7 +19,6 @@ from dotenv import dotenv_values, set_key
 
 from scripts.common.credentials import (
     generate_confluent_api_keys,
-    load_credentials_json,
     load_or_create_credentials_file,
 )
 from scripts.common.login_checks import check_confluent_login
@@ -52,20 +51,20 @@ AZURE_REGIONS = [
 ]
 
 
-def main():
+def main() -> None:
     """Main entry point for deploy."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Simple deployment tool for Confluent ML functions")
     parser.add_argument(
         "--testing",
         action="store_true",
-        help="Non-interactive mode using credentials.json (for automated testing)",
+        help="Non-interactive mode using credentials.env (for automated testing)",
     )
     parser.add_argument(
         "lab",
         nargs="?",
         choices=["lab1", "lab2", "lab3", "lab4"],
-        help="Lab to deploy directly, e.g. 'lab2' (skips the lab selection menu)",
+        help="Lab to deploy (e.g. 'lab2'). Omit to deploy all labs.",
     )
     args = parser.parse_args()
 
@@ -76,24 +75,24 @@ def main():
     root = get_project_root()
     print(f"Project root: {root}")
 
-    # TESTING MODE: Load credentials from JSON and skip all prompts
+    # TESTING MODE: Load credentials from credentials.env and skip all prompts
     if args.testing:
-        creds = load_credentials_json(root)
+        _, creds = load_or_create_credentials_file(root)
 
-        # Extract values from JSON (ensure cloud provider is lowercase)
-        cloud = creds["cloud"].lower()
-        region = creds["region"]
+        # Extract values from .env (ensure cloud provider is lowercase)
+        cloud = creds.get("TF_VAR_cloud_provider", "").lower()
+        region = creds.get("TF_VAR_cloud_region", "")
         envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
 
         # Build environment variables for Terraform
         env_vars = {
-            "TF_VAR_confluent_cloud_api_key": creds["confluent_cloud_api_key"],
-            "TF_VAR_confluent_cloud_api_secret": creds["confluent_cloud_api_secret"],
+            "TF_VAR_confluent_cloud_api_key": creds.get("TF_VAR_confluent_cloud_api_key", ""),
+            "TF_VAR_confluent_cloud_api_secret": creds.get("TF_VAR_confluent_cloud_api_secret", ""),
             "TF_VAR_cloud_region": region,
             "TF_VAR_cloud_provider": cloud,
         }
 
-        print("✓ Credentials loaded from credentials.json")
+        print("✓ Credentials loaded from credentials.env")
         print(f"  Cloud: {cloud}")
         print(f"  Region: {region}")
         print(f"  Deploying: {', '.join(envs_to_deploy)}")
@@ -135,26 +134,13 @@ def main():
                 creds["TF_VAR_confluent_cloud_api_key"] = api_key
                 creds["TF_VAR_confluent_cloud_api_secret"] = api_secret
 
-        # Step 4: Select what to deploy
+        # Step 4: Determine what to deploy
         if args.lab:
             envs_to_deploy = ["core", args.lab]
             print(f"Deploying: {args.lab} (specified on command line)")
         else:
-            envs_to_deploy = []
-            deploy_options = ["Lab 1", "Lab 2", "Lab 3", "Lab 4", "All Labs (1-4)"]
-            env_choice = prompt_choice("What would you like to deploy?", deploy_options)
-
-            # Map user-friendly choice to deployment targets (core auto-included for labs)
-            if env_choice == "Lab 1":
-                envs_to_deploy = ["core", "lab1"]
-            elif env_choice == "Lab 2":
-                envs_to_deploy = ["core", "lab2"]
-            elif env_choice == "Lab 3":
-                envs_to_deploy = ["core", "lab3"]
-            elif env_choice == "Lab 4":
-                envs_to_deploy = ["core", "lab4"]
-            elif env_choice == "All Labs (1-4)":
-                envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
+            envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
+            print("Deploying: all labs (default)")
 
         # Step 5: Prompt for required credentials
         print("\n--- Credential Configuration ---")

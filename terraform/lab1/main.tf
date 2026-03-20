@@ -4,17 +4,11 @@ data "terraform_remote_state" "core" {
 }
 
 locals {
-  cloud_provider = data.terraform_remote_state.core.outputs.cloud_provider
-  cloud_region   = data.terraform_remote_state.core.outputs.cloud_region
+  flink_rest_endpoint = data.terraform_remote_state.core.outputs.confluent_flink_rest_endpoint
 }
 
 data "confluent_organization" "main" {}
 
-# Get Flink region data
-data "confluent_flink_region" "lab3_flink_region" {
-  cloud  = upper(local.cloud_provider)
-  region = local.cloud_region
-}
 # Add lab-specific resources below
 
 
@@ -32,7 +26,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
@@ -41,7 +35,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   statement_name = "machine-sensor-raw-create-table"
 
   statement = <<-EOT
-    CREATE TABLE machine_sensor_raw (
+    CREATE TABLE IF NOT EXISTS machine_sensor_raw (
   machine_id STRING,
   motor_current DOUBLE,
   rpm INT,
@@ -53,7 +47,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   WATERMARK FOR ts AS ts - INTERVAL '5' SECOND
 ) WITH (
   'connector' = 'faker',
-  'fields.machine_id.expression' = '#{regexify ''CNC-(101|102|103)''}',
+  'fields.machine_id.expression' = '#{regexify ''CNC-(101|102|103|104|105|106|107|108|109|110)''}',
   'fields.motor_current.expression' = '#{number.random_double ''2'',''10'',''15''}',
   'fields.rpm.expression' = '#{number.number_between ''1400'',''1500''}',
   'fields.voltage.expression' = '220',
@@ -90,7 +84,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_table" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
@@ -99,7 +93,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_table" {
   statement_name = "cnc-machine-signals-create-table"
 
   statement = <<-EOT
-  CREATE TABLE cnc_machine_signals (
+  CREATE TABLE IF NOT EXISTS cnc_machine_signals (
   machine_id     STRING,
   ts             TIMESTAMP_LTZ(3),
   rpm            DOUBLE,
@@ -138,7 +132,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_insert" {
   principal {
     id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   }
-  rest_endpoint = data.confluent_flink_region.lab3_flink_region.rest_endpoint
+  rest_endpoint = local.flink_rest_endpoint
   credentials {
     key    = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
     secret = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
