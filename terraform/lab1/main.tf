@@ -47,7 +47,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   WATERMARK FOR ts AS ts - INTERVAL '5' SECOND
 ) WITH (
   'connector' = 'faker',
-  'fields.machine_id.expression' = '#{regexify ''CNC-(101|102|103)''}',
+  'fields.machine_id.expression' = '#{regexify ''CNC-(101|102|103|104|105|106|107|108|109|110)''}',
   'fields.motor_current.expression' = '#{number.random_double ''2'',''10'',''15''}',
   'fields.rpm.expression' = '#{number.number_between ''1400'',''1500''}',
   'fields.voltage.expression' = '220',
