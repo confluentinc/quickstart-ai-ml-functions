@@ -66,7 +66,6 @@ deployment_summary = "scripts.common.generate_deployment_summary:main"
 deployment-summary = "scripts.common.generate_deployment_summary:main"
 #
 tests = "scripts.tests.run:full"
-test-smoke = "scripts.tests.run:smoke"
 
 
 [project.urls]

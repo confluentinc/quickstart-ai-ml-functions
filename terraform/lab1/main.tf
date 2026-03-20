@@ -35,7 +35,7 @@ resource "confluent_flink_statement" "machine_sensor_raw_table" {
   statement_name = "machine-sensor-raw-create-table"
 
   statement = <<-EOT
-    CREATE TABLE machine_sensor_raw (
+    CREATE TABLE IF NOT EXISTS machine_sensor_raw (
   machine_id STRING,
   motor_current DOUBLE,
   rpm INT,
@@ -93,7 +93,7 @@ resource "confluent_flink_statement" "cnc_machine_signals_table" {
   statement_name = "cnc-machine-signals-create-table"
 
   statement = <<-EOT
-  CREATE TABLE cnc_machine_signals (
+  CREATE TABLE IF NOT EXISTS cnc_machine_signals (
   machine_id     STRING,
   ts             TIMESTAMP_LTZ(3),
   rpm            DOUBLE,

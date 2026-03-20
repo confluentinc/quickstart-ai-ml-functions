@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Simple deployment script for Confluent ML Functions quickstart.
-Uses credentials from credentials.env or credentials.json and deploys via Terraform.
+Uses credentials from credentials.env and deploys via Terraform.
 
 IMPORTANT: Interactive mode always uses hardcoded regions:
 - AWS: us-east-1
 - Azure: eastus2
 
-Testing mode (--testing flag) respects the region in credentials.json,
+Testing mode (--testing flag) respects the region in credentials.env,
 allowing developers to override the default regions if needed.
 """
 
@@ -58,7 +58,7 @@ def main() -> None:
     parser.add_argument(
         "--testing",
         action="store_true",
-        help="Non-interactive mode using credentials.json (for automated testing)",
+        help="Non-interactive mode using credentials.env (for automated testing)",
     )
     parser.add_argument(
         "lab",

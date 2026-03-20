@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple destruction script for Confluent ML Functions quickstart.
-Uses credentials from credentials.env or credentials.json for destruction via Terraform.
+Uses credentials from credentials.env for destruction via Terraform.
 """
 
 import argparse
@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from .credentials import load_credentials_json, load_or_create_credentials_file
+from .credentials import load_or_create_credentials_file
 from .terraform import get_project_root
 from .terraform_runner import run_terraform_destroy
 from .ui import prompt_choice
@@ -62,7 +62,7 @@ def main():
     parser.add_argument(
         "--testing",
         action="store_true",
-        help="Non-interactive mode using credentials.json (for automated testing)",
+        help="Non-interactive mode using credentials.env (for automated testing)",
     )
     args = parser.parse_args()
 
@@ -73,17 +73,17 @@ def main():
     root = get_project_root()
     print(f"Project root: {root}")
 
-    # TESTING MODE: Load from JSON and skip prompts
+    # TESTING MODE: Load from credentials.env and skip prompts
     if args.testing:
-        creds = load_credentials_json(root)
-        cloud = creds["cloud"]
+        _, raw_creds = load_or_create_credentials_file(root)
+        cloud = raw_creds.get("TF_VAR_cloud_provider", "").lower()
         envs_to_destroy = ["lab4", "lab3", "lab2", "lab1", "core"]  # Reverse order
 
         # Build environment variables
         env_vars = {
-            "TF_VAR_confluent_cloud_api_key": creds["confluent_cloud_api_key"],
-            "TF_VAR_confluent_cloud_api_secret": creds["confluent_cloud_api_secret"],
-            "TF_VAR_cloud_region": creds["region"],
+            "TF_VAR_confluent_cloud_api_key": raw_creds.get("TF_VAR_confluent_cloud_api_key", ""),
+            "TF_VAR_confluent_cloud_api_secret": raw_creds.get("TF_VAR_confluent_cloud_api_secret", ""),
+            "TF_VAR_cloud_region": raw_creds.get("TF_VAR_cloud_region", ""),
             "TF_VAR_cloud_provider": cloud,
         }
 
