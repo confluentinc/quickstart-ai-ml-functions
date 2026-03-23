@@ -1,8 +1,70 @@
 # Lab 2: Real-Time Payment Fraud Detection with `ML_DETECT_ANOMALIES`
 
-This lab demonstrates a real-time payment fraud detection pipeline using the built-in `ML_DETECT_ANOMALIES` function. Per-customer ARIMA models flag unusually large transaction amounts, and unusual cash advance activity.
+This lab demonstrates a **real-time payment fraud detection pipeline** that continuously monitors customer transactions, detects anomalous behavior patterns, and flags potential fraud before financial losses occur.
+
+Built on **Confluent Cloud for Apache Flink**, the system processes synthetic payment events in real time and applies **built-in ML anomaly detection** to identify unusual transaction amounts and suspicious cash advance activity — per customer.
 
 [Learn more about the built-in anomaly detection functions on Confluent Cloud for Apache Flink.](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
+
+---
+
+# Business Context
+
+**FinSecure Payments** processes millions of card transactions daily across 50+ markets.
+
+Currently, fraud detection runs on **batch rules** with fixed thresholds — meaning fraud is often detected hours after it occurs, and genuine customers are blocked by false positives.
+
+To reduce fraud losses and improve customer experience, FinSecure is implementing **real-time per-customer anomaly detection** by streaming transaction events through Confluent Cloud and applying online ARIMA models that learn each customer's individual spending baseline.
+
+---
+
+# The Use Case: Per-Customer Payment Anomaly Detection
+
+The system monitors **two interconnected fraud signals** per customer:
+
+* **Transaction amount spikes** — unusually large purchases relative to a customer's history
+* **Cash advance spikes** — sudden increases in `CASH_ADVANCE` activity above a customer's baseline
+
+These signals together reveal suspicious behavior patterns that fixed rules miss. By modeling each customer individually, the system:
+
+1. Detects **outlier transaction amounts** that deviate from personal spending norms
+2. Identifies **cash advance surges** that suggest account compromise
+3. Emits fraud alerts in **real time** — not hours later
+
+---
+
+# Architecture Overview
+
+The streaming architecture follows three main stages:
+
+1. **Data Generation** – Synthetic payment events are produced continuously via the Flink faker connector.
+2. **Anomaly Detection** – Two per-customer ARIMA models run in parallel on amount and transaction type signals.
+3. **Fraud Output** – Flagged transactions are written to the `fraud_transactions` table, backed by a Kafka topic.
+
+![Architecture Diagram](./assets/lab2/lab2-architecture.png)
+
+---
+
+# Prerequisites
+
+Install the following tools:
+
+**MacOS**
+
+```bash
+brew install uv git python
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+brew install --cask confluent-cli
+```
+
+**Windows**
+
+```powershell
+winget install astral-sh.uv Git.Git Hashicorp.Terraform ConfluentInc.Confluent-CLI Python.Python
+```
+
+---
 
 ## Deploy the Demo
 
