@@ -4,8 +4,7 @@ data "terraform_remote_state" "core" {
 }
 
 locals {
-  cloud_provider = data.terraform_remote_state.core.outputs.cloud_provider
-  cloud_region   = data.terraform_remote_state.core.outputs.cloud_region
+  flink_rest_endpoint = data.terraform_remote_state.core.outputs.confluent_flink_rest_endpoint
 }
 
 # Add lab-specific resources below

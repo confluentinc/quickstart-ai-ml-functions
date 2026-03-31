@@ -3,14 +3,11 @@ Credential loading and management utilities.
 
 Provides functions for:
 - Loading credentials from credentials.env files
-- Loading credentials from credentials.json (for automated testing)
 - Generating Confluent Cloud API keys via CLI
 """
 
-import json
 import shutil
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -42,49 +39,6 @@ def load_or_create_credentials_file(root: Path) -> tuple[Path, dict[str, str]]:
         print(f"\nCreated new {creds_file}.")
 
     return creds_file, {}
-
-
-def load_credentials_json(root: Path) -> dict[str, str]:
-    """
-    Load credentials from credentials.json for automated testing.
-
-    Args:
-        root: Project root directory
-
-    Returns:
-        Credentials dictionary
-
-    Raises:
-        SystemExit: If file not found, invalid JSON, or missing required fields
-    """
-    creds_file = root / "credentials.json"
-
-    if not creds_file.exists():
-        print(f"\nError: credentials.json not found at {creds_file}")
-        print("Please create credentials.json from tests/credentials.template.json")
-        sys.exit(1)
-
-    try:
-        with open(creds_file) as f:
-            creds = json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"\nError: Invalid JSON in credentials.json: {e}")
-        sys.exit(1)
-
-    # Validate required fields
-    required_fields = [
-        "cloud",
-        "region",
-        "confluent_cloud_api_key",
-        "confluent_cloud_api_secret",
-    ]
-    missing = [f for f in required_fields if f not in creds or not creds[f]]
-
-    if missing:
-        print(f"\nError: Missing required fields in credentials.json: {', '.join(missing)}")
-        sys.exit(1)
-
-    return creds
 
 
 def generate_confluent_api_keys(
