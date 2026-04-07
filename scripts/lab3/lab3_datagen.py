@@ -34,6 +34,9 @@ from faker import Faker
 
 try:
     from confluent_kafka import Producer
+    from confluent_kafka.schema_registry import SchemaRegistryClient
+    from confluent_kafka.schema_registry.avro import AvroSerializer
+    from confluent_kafka.serialization import SerializationContext, MessageField, StringSerializer
 
     CONFLUENT_KAFKA_AVAILABLE = True
 except ImportError:
@@ -43,6 +46,22 @@ from scripts.common.logging_utils import setup_logging
 from scripts.common.terraform import extract_kafka_credentials, get_project_root
 
 TOPIC = "lab3_tower_traffic"
+
+# AVRO Schema for tower traffic records (must match Terraform schema registration)
+TOWER_TRAFFIC_SCHEMA = """{
+  "type": "record",
+  "name": "TowerTraffic",
+  "namespace": "io.confluent.lab3",
+  "fields": [
+    {"name": "tower_id", "type": "string"},
+    {"name": "region", "type": "string"},
+    {"name": "ts_ms", "type": "long"},
+    {"name": "throughput_mbps", "type": "double"},
+    {"name": "active_users", "type": "int"},
+    {"name": "signal_strength_dbm", "type": "int"},
+    {"name": "capacity_mbps", "type": "double"}
+  ]
+}"""
 
 # 10 towers across 3 regions — capacity_mbps is the per-tower ceiling used
 # by the alert pipeline to compute utilisation percentage.
@@ -65,13 +84,13 @@ def _traffic_utilization(hour: float) -> float:
     Return a utilisation fraction in [0, 1] for the given fractional hour (0–24).
 
     Traffic shape:
-      - Morning rush  ~07:00–09:00  peak ~75 %
-      - Evening rush  ~17:00–20:00  peak ~90 %
-      - Late night    ~02:00–05:00  trough ~12 %
+      - Morning rush  ~07:00–09:00  peak ~85 %
+      - Evening rush  ~17:00–20:00  peak ~98 %
+      - Late night    ~02:00–05:00  trough ~18 %
     """
-    morning = 0.75 * math.exp(-0.5 * ((hour - 8.0) / 1.2) ** 2)
-    evening = 0.90 * math.exp(-0.5 * ((hour - 18.5) / 1.8) ** 2)
-    base = 0.12
+    morning = 0.85 * math.exp(-0.5 * ((hour - 8.0) / 1.2) ** 2)
+    evening = 0.98 * math.exp(-0.5 * ((hour - 18.5) / 1.8) ** 2)
+    base = 0.18
     return min(1.0, base + morning + evening)
 
 
@@ -80,8 +99,8 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     now = at or datetime.now(timezone.utc)
     hour = now.hour + now.minute / 60.0
 
-    # Per-tower utilisation with small random jitter (±8 %)
-    jitter = fake.pyfloat(min_value=-0.08, max_value=0.08, right_digits=3)
+    # Per-tower utilisation with random jitter (±12 %)
+    jitter = fake.pyfloat(min_value=-0.12, max_value=0.12, right_digits=3)
     utilization = min(1.0, max(0.05, _traffic_utilization(hour) + jitter))
 
     throughput = round(tower["capacity_mbps"] * utilization, 2)
@@ -105,7 +124,7 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     }
 
 
-def _backfill(producer, fake: Faker, logger, delivery_cb, backfill_minutes: int) -> int:
+def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, delivery_cb, backfill_minutes: int) -> int:
     """
     Burst-produce backdated records oldest-first to warm the ARIMA model.
 
@@ -130,8 +149,8 @@ def _backfill(producer, fake: Faker, logger, delivery_cb, backfill_minutes: int)
             reading = _generate_reading(tower, fake, at=at)
             producer.produce(
                 topic=TOPIC,
-                key=reading["tower_id"],
-                value=json.dumps(reading),
+                key=key_serializer(reading["tower_id"], SerializationContext(TOPIC, MessageField.KEY)),
+                value=value_serializer(reading, SerializationContext(TOPIC, MessageField.VALUE)),
                 on_delivery=delivery_cb,
             )
             total += 1
@@ -182,6 +201,17 @@ def main() -> None:
     project_root = get_project_root()
     creds = extract_kafka_credentials("terraform", project_root)
 
+    # Schema Registry client
+    schema_registry_conf = {
+        "url": creds["schema_registry_url"],
+        "basic.auth.user.info": f"{creds['schema_registry_api_key']}:{creds['schema_registry_api_secret']}",
+    }
+    schema_registry_client = SchemaRegistryClient(schema_registry_conf)
+
+    # Serializers
+    key_serializer = StringSerializer("utf_8")
+    value_serializer = AvroSerializer(schema_registry_client, TOWER_TRAFFIC_SCHEMA)
+
     producer = Producer(
         {
             "bootstrap.servers": creds["bootstrap_servers"],
@@ -218,7 +248,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
 
     if not args.no_backfill:
-        _backfill(producer, fake, logger, _delivery_cb, args.backfill_minutes)
+        _backfill(producer, key_serializer, value_serializer, fake, logger, _delivery_cb, args.backfill_minutes)
         print("[backfill] Switching to live mode...")
 
     print(f"Publishing to '{TOPIC}' — {len(TOWERS)} towers — Ctrl+C to stop")
@@ -231,8 +261,8 @@ def main() -> None:
             reading = _generate_reading(tower, fake)
             producer.produce(
                 topic=TOPIC,
-                key=reading["tower_id"],
-                value=json.dumps(reading),
+                key=key_serializer(reading["tower_id"], SerializationContext(TOPIC, MessageField.KEY)),
+                value=value_serializer(reading, SerializationContext(TOPIC, MessageField.VALUE)),
                 on_delivery=_delivery_cb,
             )
             total += 1
