@@ -40,6 +40,7 @@ requires-python = ">=3.10"
 dependencies = [
     "python-dotenv>=1.0.0,<2.0",
     "confluent-kafka[avro,schema-registry]>=2.3.0",
+    "faker>=20.0.0",
 ]
 
 # Optional dependencies for enhanced functionality
@@ -66,6 +67,8 @@ deployment_summary = "scripts.common.generate_deployment_summary:main"
 deployment-summary = "scripts.common.generate_deployment_summary:main"
 #
 tests = "scripts.tests.run:full"
+lab3-datagen = "scripts.lab3.lab3_datagen:main"
+lab3-flink = "scripts.lab3.lab3_flink:main"
 
 
 [project.urls]
