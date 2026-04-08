@@ -153,7 +153,7 @@ You should see all 10 towers streaming in, with `throughput_mbps` values that re
 The `lab3_tower_agg` pipeline computes per-tower windowed statistics:
 Note: The Create Table statement has already been deployed. No need to run this again.
 ```sql
-CREATE TABLE lab3_tower_agg
+CREATE TABLE IF NOT EXISTS lab3_tower_agg
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -199,7 +199,7 @@ Note: The Create Table statement has already been deployed. No need to run this 
 
 
 ```sql
-CREATE TABLE lab3_forecasts
+CREATE TABLE IF NOT EXISTS lab3_forecasts
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -267,7 +267,7 @@ Note: The Create Table statement has already been deployed. No need to run this 
 
 
 ```sql
-CREATE TABLE lab3_capacity_alerts
+CREATE TABLE IF NOT EXISTS lab3_capacity_alerts
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT

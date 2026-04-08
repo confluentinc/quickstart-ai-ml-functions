@@ -106,7 +106,7 @@ WHERE lf.forecast_throughput_mbps IS NOT NULL
 ]
 
 
-def main():
+def main() -> None:
     print("=== Lab 3: Deploy Flink Pipelines ===\n")
 
     root = get_project_root()
