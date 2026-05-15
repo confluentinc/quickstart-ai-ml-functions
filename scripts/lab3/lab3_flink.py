@@ -22,6 +22,7 @@ from scripts.common.terraform import get_project_root, run_terraform_output
 STATEMENTS = [
     {
         "name": "lab3-tower-agg-pipeline",
+        "dest": "lab3_tower_agg",
         "sql": """
 CREATE TABLE `lab3_tower_agg`
 DISTRIBUTED INTO 6 BUCKETS
@@ -43,6 +44,7 @@ GROUP BY tower_id, region, window_start, window_end;
     },
     {
         "name": "lab3-forecasts-pipeline",
+        "dest": "lab3_forecasts",
         "sql": """
 CREATE TABLE `lab3_forecasts`
 DISTRIBUTED INTO 6 BUCKETS
@@ -78,6 +80,7 @@ WHERE CARDINALITY(forecast) >= 1;
     },
     {
         "name": "lab3-capacity-alerts-pipeline",
+        "dest": "lab3_capacity_alerts",
         "sql": """
 CREATE TABLE `lab3_capacity_alerts`
 DISTRIBUTED INTO 6 BUCKETS
@@ -117,10 +120,11 @@ def main() -> None:
 
     outputs = run_terraform_output(core_state)
     cluster_name = outputs.get("confluent_kafka_cluster_display_name", "")
+    cluster_id = outputs.get("confluent_kafka_cluster_id", "")
     compute_pool = outputs.get("confluent_flink_compute_pool_id", "")
     env_id = outputs.get("confluent_environment_id", "")
 
-    if not all([cluster_name, compute_pool, env_id]):
+    if not all([cluster_name, cluster_id, compute_pool, env_id]):
         print("❌ Error: Missing required outputs from Terraform state")
         sys.exit(1)
 
@@ -147,7 +151,7 @@ def main() -> None:
                 print("  ❌ Statement or destination table already exists.")
                 print("     A previous run likely left broken state. Clean up and retry:")
                 print(f"       confluent flink statement delete {stmt['name']} --environment {env_id}")
-                print("       confluent kafka topic delete <destination_topic> --cluster <cluster-id>")
+                print(f"       confluent kafka topic delete {stmt['dest']} --cluster {cluster_id}")
                 print("     Or simplest: `uv run destroy && uv run deploy` and start over.")
                 sys.exit(1)
             print(f"  ❌ Failed: {err}")
