@@ -22,8 +22,9 @@ from scripts.common.terraform import get_project_root, run_terraform_output
 STATEMENTS = [
     {
         "name": "lab3-tower-agg-pipeline",
+        "dest": "lab3_tower_agg",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_tower_agg`
+CREATE TABLE `lab3_tower_agg`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -43,8 +44,9 @@ GROUP BY tower_id, region, window_start, window_end;
     },
     {
         "name": "lab3-forecasts-pipeline",
+        "dest": "lab3_forecasts",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_forecasts`
+CREATE TABLE `lab3_forecasts`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -78,8 +80,9 @@ WHERE CARDINALITY(forecast) >= 1;
     },
     {
         "name": "lab3-capacity-alerts-pipeline",
+        "dest": "lab3_capacity_alerts",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_capacity_alerts`
+CREATE TABLE `lab3_capacity_alerts`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -117,10 +120,11 @@ def main() -> None:
 
     outputs = run_terraform_output(core_state)
     cluster_name = outputs.get("confluent_kafka_cluster_display_name", "")
+    cluster_id = outputs.get("confluent_kafka_cluster_id", "")
     compute_pool = outputs.get("confluent_flink_compute_pool_id", "")
     env_id = outputs.get("confluent_environment_id", "")
 
-    if not all([cluster_name, compute_pool, env_id]):
+    if not all([cluster_name, cluster_id, compute_pool, env_id]):
         print("❌ Error: Missing required outputs from Terraform state")
         sys.exit(1)
 
@@ -142,14 +146,17 @@ def main() -> None:
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            # Check if error is "already exists" - that's okay
-            if "already exists" in result.stderr.lower():
-                print(f"  ℹ️  Already exists (skipping)")
-            else:
-                print(f"  ❌ Failed: {result.stderr.strip()}")
+            err = result.stderr.strip()
+            if "already exists" in err.lower():
+                print("  ❌ Statement or destination table already exists.")
+                print("     A previous run likely left broken state. Clean up and retry:")
+                print(f"       confluent flink statement delete {stmt['name']} --environment {env_id}")
+                print(f"       confluent kafka topic delete {stmt['dest']} --cluster {cluster_id}")
+                print("     Or simplest: `uv run destroy && uv run deploy` and start over.")
                 sys.exit(1)
-        else:
-            print(f"  ✅ Submitted successfully")
+            print(f"  ❌ Failed: {err}")
+            sys.exit(1)
+        print("  ✅ Submitted successfully")
 
         if i < len(STATEMENTS):
             time.sleep(3)  # Brief pause between statements
