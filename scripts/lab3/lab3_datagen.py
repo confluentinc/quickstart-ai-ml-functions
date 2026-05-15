@@ -15,7 +15,7 @@ no manual copy-paste required.
 
 Usage:
     uv run lab3-datagen                         # backfill 60 min, then live (realtime)
-    uv run lab3-datagen --scenario peak         # pin to 17:00 UTC — alerts fire reliably
+    uv run lab3-datagen --scenario peak         # start at 17:00 UTC — alerts fire reliably
     uv run lab3-datagen --scenario cycle        # 24h compressed into ~6 min — peaks/troughs live
     uv run lab3-datagen --backfill-minutes 90   # more history for slower workshops
     uv run lab3-datagen --no-backfill           # skip backfill, live mode only
@@ -117,9 +117,9 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
                 otherwise truncate ARIMA's training distribution).
       cycle     simulated time starts at today's midnight and advances at
                 240× wall-clock — one full 24h day every ~6 wall minutes.
-                Backfill spans one full simulated day ending where live
-                mode starts, so ARIMA trains on the entire diurnal curve
-                before live mode begins.
+                Backfill spans one full simulated day ending just before
+                live mode starts, so ARIMA trains on the entire diurnal
+                curve before live mode begins.
     """
     start = datetime.now(timezone.utc)
 
@@ -277,7 +277,7 @@ def main() -> None:
         help=(
             "Traffic-shape time source: "
             "'realtime' uses wall-clock UTC (default; alerts only fire ~07-09 and ~17-20 UTC). "
-            "'peak' pins every reading to 17:00 UTC (~87%% mean utilization, no clipping) so alerts fire reliably. "
+            "'peak' starts simulated time at 17:00 UTC (~87%% utilization) and advances at wall-clock pace so alerts fire reliably from the first window. "
             "'cycle' compresses 24h into ~6 wall minutes so live mode cycles through peaks and troughs."
         ),
     )

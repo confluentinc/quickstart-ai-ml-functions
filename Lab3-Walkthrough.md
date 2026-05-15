@@ -84,17 +84,17 @@ cd quickstart-ai-ml-functions
 ```bash
 # If already deployed skip to next step, else if not already deployed, destroy and redeploy
 uv run destroy
-uv run deploy lab3  # Select Lab 3
+uv run deploy lab3  # the `lab3` argument selects Lab 3 non-interactively
 ```
 
 Monitor in Confluent Cloud → Flink → Statements to see the pipelines running.
 
-Select **Lab 3** when prompted. This provisions:
+This provisions:
 
 - Shared Confluent Cloud environment, Kafka cluster, and Flink compute pool
 - The `lab3_tower_traffic` source Kafka topic and matching Flink table (Avro / Schema Registry, 6 partitions)
 
-The downstream topics (`lab3_tower_agg`, `lab3_forecasts`, `lab3_capacity_alerts`) and their Flink pipelines are created by `uv run lab3-flink` in step 4 below — **after** the datagen has produced data. Letting the CTAS create those topics ensures the inferred column schema is attached correctly.
+The downstream topics (`lab3_tower_agg`, `lab3_forecasts`, `lab3_capacity_alerts`) and their Flink pipelines are created by `uv run lab3-flink` in the *Deploy Flink pipelines* step below — **after** the datagen has produced data. Letting the CTAS create those topics ensures the inferred column schema is attached correctly.
 
 **3. Start the data generator:**
 
@@ -124,7 +124,7 @@ uv run lab3-flink
 **Generator options:**
 
 ```bash
-uv run lab3-datagen --scenario peak         # pin to 17:00 UTC — alerts fire reliably (recommended for demos)
+uv run lab3-datagen --scenario peak         # start at 17:00 UTC — alerts fire reliably (recommended for demos)
 uv run lab3-datagen --scenario cycle        # compress 24h into ~6 min — see the full traffic curve live
 uv run lab3-datagen --backfill-minutes 90   # more history
 uv run lab3-datagen --no-backfill           # skip backfill
@@ -139,7 +139,7 @@ The generator's traffic shape is a daily curve with a morning peak (~08:00 UTC, 
 | Scenario             | What it does                                                                                                                                                                | When to use                                                                                                                                                   |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `realtime` (default) | Uses wall-clock UTC time. The traffic shape advances naturally.                                                                                                             | Long-running deployments; when you want to observe real diurnal behavior. **Outside ~07-09 and ~17-20 UTC, alerts will be empty — this is correct behavior.** |
-| `peak`               | Pins every reading to 17:00 UTC, where the natural curve sits at ~87% utilization (jitter range 75-99%). Above the 85% alert threshold but below the 100% clipping ceiling. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
+| `peak`               | Starts simulated time at 17:00 UTC (~87% utilization, jitter 75-99%) and advances at wall-clock pace. Stays above the 85% alert threshold and below 100% clipping for the first ~90 wall minutes — long enough for any demo. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
 | `cycle`              | Compresses 24 simulated hours into ~6 wall-clock minutes. Live mode cycles through the full curve repeatedly.                                                               | Learning/teaching — the most interesting story because ARIMA visibly tracks the trough → peak transition and forecasts ahead of the breach.                   |
 
 ---
