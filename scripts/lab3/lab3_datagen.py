@@ -14,7 +14,9 @@ Credentials are loaded automatically from terraform/core/terraform.tfstate —
 no manual copy-paste required.
 
 Usage:
-    uv run lab3-datagen                         # backfill 60 min, then live
+    uv run lab3-datagen                         # backfill 60 min, then live (realtime)
+    uv run lab3-datagen --scenario peak         # pin to 18:30 UTC — alerts fire reliably
+    uv run lab3-datagen --scenario cycle        # 24h compressed into ~6 min — peaks/troughs live
     uv run lab3-datagen --backfill-minutes 90   # more history for slower workshops
     uv run lab3-datagen --no-backfill           # skip backfill, live mode only
     uv run lab3-datagen --interval 0.5          # faster live cadence
@@ -79,6 +81,80 @@ TOWERS = [
 ]
 
 
+SCENARIOS = ("realtime", "peak", "cycle")
+CYCLE_SPEED_FACTOR = 240  # 24 simulated hours per 6 wall-clock minutes
+
+# Pin `peak` mode 90 minutes before the 18:30 evening peak. At this point the
+# natural curve sits at ~87% utilization, jitter range [75%, 99%] — well above
+# the 85% alert threshold, but NOT clipped at 100%. Clipping at 100% truncates
+# ARIMA's training distribution and leads to absurd forecast extrapolations
+# (e.g. 131% utilization).
+PEAK_HOUR_UTC = 17
+PEAK_MINUTE_UTC = 0
+
+
+def _peak_time(reference: datetime) -> datetime:
+    return reference.replace(hour=PEAK_HOUR_UTC, minute=PEAK_MINUTE_UTC, second=0, microsecond=0)
+
+
+def _scenario_time_sources(scenario: str, backfill_minutes: int):
+    """
+    Build the time-source callables for a given --scenario.
+
+    Returns (live_now, backfill_at) where:
+      live_now()         -> simulated 'now' used in live mode (called once per reading)
+      backfill_at(step)  -> simulated time for one backfill step (step is 0-indexed)
+
+    Scenarios:
+      realtime  use wall-clock UTC. Peaks fire only ~07-09 and ~17-20 UTC.
+      peak      pin every reading to 17:00 UTC (~87% mean utilization). Above
+                the 85% alert threshold but below the 100% clipping ceiling,
+                so ARIMA forecasts stay sensible.
+      cycle     compress 24h into ~6 wall minutes so live mode cycles through
+                peaks and troughs and ARIMA learns the full daily curve.
+    """
+    start = datetime.now(timezone.utc)
+
+    if scenario == "realtime":
+        def live_now() -> datetime:
+            return datetime.now(timezone.utc)
+
+        def backfill_at(step: int) -> datetime:
+            return start - timedelta(minutes=backfill_minutes - step)
+
+        return live_now, backfill_at
+
+    if scenario == "peak":
+        peak = _peak_time(start)
+
+        def live_now() -> datetime:
+            return _peak_time(datetime.now(timezone.utc))
+
+        def backfill_at(step: int) -> datetime:
+            return peak - timedelta(minutes=backfill_minutes - step)
+
+        return live_now, backfill_at
+
+    if scenario == "cycle":
+        midnight = start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        def live_now() -> datetime:
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+            sim_hours = (elapsed * CYCLE_SPEED_FACTOR / 3600.0) % 24.0
+            return midnight + timedelta(hours=sim_hours)
+
+        def backfill_at(step: int) -> datetime:
+            # Spread the backfill across one full 24h simulated cycle so ARIMA
+            # trains on the entire daily curve before live mode starts.
+            denom = max(backfill_minutes - 1, 1)
+            sim_hours = (step / denom) * 24.0
+            return midnight + timedelta(hours=sim_hours)
+
+        return live_now, backfill_at
+
+    raise ValueError(f"Unknown scenario {scenario!r}; expected one of {SCENARIOS}")
+
+
 def _traffic_utilization(hour: float) -> float:
     """
     Return a utilisation fraction in [0, 1] for the given fractional hour (0–24).
@@ -124,27 +200,26 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     }
 
 
-def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, delivery_cb, backfill_minutes: int) -> int:
+def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, delivery_cb, backfill_minutes: int, backfill_at) -> int:
     """
     Burst-produce backdated records oldest-first to warm the ARIMA model.
 
-    Produces one snapshot per tower per minute over the backfill window.
-    60 minutes × 10 towers = 600 records, sent in ~1–2 seconds.
+    Produces one snapshot per tower per backfill step (one step ≈ one simulated
+    minute in `realtime`/`peak`, or one slice of the 24h curve in `cycle`).
+    60 steps × 10 towers = 600 records, sent in ~1–2 seconds.
 
     Records must be produced in chronological order so Flink's event-time
     watermark advances forward and the TUMBLE windows close in sequence.
     """
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(minutes=backfill_minutes)
     total = 0
 
     print(
-        f"[backfill] Producing {backfill_minutes} min × {len(TOWERS)} towers = "
+        f"[backfill] Producing {backfill_minutes} steps × {len(TOWERS)} towers = "
         f"{backfill_minutes * len(TOWERS)} records (oldest-first)..."
     )
 
     for step in range(backfill_minutes):
-        at = start + timedelta(minutes=step)
+        at = backfill_at(step)
         for tower in TOWERS:
             reading = _generate_reading(tower, fake, at=at)
             producer.produce(
@@ -188,6 +263,17 @@ def main() -> None:
         "--no-backfill",
         action="store_true",
         help="Skip historical backfill and go straight to live mode",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=SCENARIOS,
+        default="realtime",
+        help=(
+            "Traffic-shape time source: "
+            "'realtime' uses wall-clock UTC (default; alerts only fire ~07-09 and ~17-20 UTC). "
+            "'peak' pins every reading to 17:00 UTC (~87%% mean utilization, no clipping) so alerts fire reliably. "
+            "'cycle' compresses 24h into ~6 wall minutes so live mode cycles through peaks and troughs."
+        ),
     )
     args = parser.parse_args()
 
@@ -247,18 +333,22 @@ def main() -> None:
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
+    live_now, backfill_at = _scenario_time_sources(args.scenario, args.backfill_minutes)
+    print(f"Scenario: {args.scenario}")
+
     if not args.no_backfill:
-        _backfill(producer, key_serializer, value_serializer, fake, logger, _delivery_cb, args.backfill_minutes)
+        _backfill(producer, key_serializer, value_serializer, fake, logger, _delivery_cb, args.backfill_minutes, backfill_at)
         print("[backfill] Switching to live mode...")
 
     print(f"Publishing to '{TOPIC}' — {len(TOWERS)} towers — Ctrl+C to stop")
     total = 0
 
     while running:
+        sim_now = live_now()
         for tower in TOWERS:
             if not running:
                 break
-            reading = _generate_reading(tower, fake)
+            reading = _generate_reading(tower, fake, at=sim_now)
             producer.produce(
                 topic=TOPIC,
                 key=key_serializer(reading["tower_id"], SerializationContext(TOPIC, MessageField.KEY)),

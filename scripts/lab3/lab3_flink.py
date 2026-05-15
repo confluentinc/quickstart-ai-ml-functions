@@ -23,7 +23,7 @@ STATEMENTS = [
     {
         "name": "lab3-tower-agg-pipeline",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_tower_agg`
+CREATE TABLE `lab3_tower_agg`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -44,7 +44,7 @@ GROUP BY tower_id, region, window_start, window_end;
     {
         "name": "lab3-forecasts-pipeline",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_forecasts`
+CREATE TABLE `lab3_forecasts`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -79,7 +79,7 @@ WHERE CARDINALITY(forecast) >= 1;
     {
         "name": "lab3-capacity-alerts-pipeline",
         "sql": """
-CREATE TABLE IF NOT EXISTS `lab3_capacity_alerts`
+CREATE TABLE `lab3_capacity_alerts`
 DISTRIBUTED INTO 6 BUCKETS
 AS
 SELECT
@@ -142,14 +142,17 @@ def main() -> None:
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            # Check if error is "already exists" - that's okay
-            if "already exists" in result.stderr.lower():
-                print(f"  ℹ️  Already exists (skipping)")
-            else:
-                print(f"  ❌ Failed: {result.stderr.strip()}")
+            err = result.stderr.strip()
+            if "already exists" in err.lower():
+                print(f"  ❌ Statement or destination table already exists.")
+                print(f"     A previous run likely left broken state. Clean up and retry:")
+                print(f"       confluent flink statement delete {stmt['name']} --environment {env_id}")
+                print(f"       confluent kafka topic delete <destination_topic> --cluster <cluster-id>")
+                print(f"     Or simplest: `uv run destroy && uv run deploy` and start over.")
                 sys.exit(1)
-        else:
-            print(f"  ✅ Submitted successfully")
+            print(f"  ❌ Failed: {err}")
+            sys.exit(1)
+        print(f"  ✅ Submitted successfully")
 
         if i < len(STATEMENTS):
             time.sleep(3)  # Brief pause between statements
