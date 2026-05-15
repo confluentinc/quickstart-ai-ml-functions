@@ -87,12 +87,12 @@ uv run destroy
 uv run deploy lab3  # the `lab3` argument selects Lab 3 non-interactively
 ```
 
-Monitor in Confluent Cloud → Flink → Statements to see the pipelines running.
-
 This provisions:
 
 - Shared Confluent Cloud environment, Kafka cluster, and Flink compute pool
 - The `lab3_tower_traffic` source Kafka topic and matching Flink table (Avro / Schema Registry, 6 partitions)
+
+At this point Confluent Cloud → Flink → Statements shows only the source-table statement. The downstream CTAS pipelines are submitted in the *Deploy Flink pipelines* step below.
 
 The downstream topics (`lab3_tower_agg`, `lab3_forecasts`, `lab3_capacity_alerts`) and their Flink pipelines are created by `uv run lab3-flink` in the *Deploy Flink pipelines* step below — **after** the datagen has produced data. Letting the CTAS create those topics ensures the inferred column schema is attached correctly.
 
@@ -107,7 +107,7 @@ uv run lab3-datagen
 On startup, the generator **burst-produces 60 minutes of backdated records** (600 messages across 10 towers, oldest-first) so each tower's ARIMA model has training history immediately:
 
 ```
-[backfill] Producing 60 min × 10 towers = 600 records (oldest-first)...
+[backfill] Producing 60 steps × 10 towers = 600 records (oldest-first)...
 [backfill] Done — 600 records published
 [backfill] Switching to live mode...
 Publishing to 'lab3_tower_traffic' — 10 towers — Ctrl+C to stop
@@ -139,7 +139,7 @@ The generator's traffic shape is a daily curve with a morning peak (~08:00 UTC, 
 | Scenario             | What it does                                                                                                                                                                | When to use                                                                                                                                                   |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `realtime` (default) | Uses wall-clock UTC time. The traffic shape advances naturally.                                                                                                             | Long-running deployments; when you want to observe real diurnal behavior. **Outside ~07-09 and ~17-20 UTC, alerts will be empty — this is correct behavior.** |
-| `peak`               | Starts simulated time at 17:00 UTC (~87% utilization, jitter 75-99%) and advances at wall-clock pace. Stays above the 85% alert threshold and below 100% clipping for the first ~90 wall minutes — long enough for any demo. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
+| `peak`               | Starts simulated time at 17:00 UTC and advances at wall-clock pace. The underlying curve sits at ~87% utilization; ±12% jitter per reading means individual values range 75-99%, so most windows breach the 85% alert threshold without any clipping at 100%. Stays in this band for the first ~90 wall minutes. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
 | `cycle`              | Compresses 24 simulated hours into ~6 wall-clock minutes. Live mode cycles through the full curve repeatedly.                                                               | Learning/teaching — the most interesting story because ARIMA visibly tracks the trough → peak transition and forecasts ahead of the breach.                   |
 
 ---

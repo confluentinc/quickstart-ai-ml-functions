@@ -111,10 +111,12 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
                 history at one minute per step.
       peak      simulated time starts at 17:00 UTC and advances forward at
                 wall-clock pace. Backfill spans the 10 simulated minutes
-                leading up to 17:00 at 10-second steps, so every record sits
-                in the ~82-87% utilization band (above the 85% alert
-                threshold but below the 100% clipping ceiling that would
-                otherwise truncate ARIMA's training distribution).
+                leading up to 17:00 at 10-second steps. The underlying
+                traffic curve sits at ~82-87% across that band (jitter of
+                ±12% per reading means individual records can range from
+                ~70% to ~99%); most readings sit above the 85% alert
+                threshold and none are clipped at 100%, so ARIMA's
+                training distribution stays intact.
       cycle     simulated time starts at today's midnight and advances at
                 240× wall-clock — one full 24h day every ~6 wall minutes.
                 Backfill spans one full simulated day ending just before
