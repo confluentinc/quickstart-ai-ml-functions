@@ -67,6 +67,9 @@ cd quickstart-ai-ml-functions
 
 **2. One command deployment:**
 
+> [!CAUTION]
+> You must be logged in to the Confluent CLI (`confluent login`) before running the deploy command.
+
 ```bash
 uv run deploy
 ```

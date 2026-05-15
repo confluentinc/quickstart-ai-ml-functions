@@ -13,11 +13,14 @@ Simulated sensor data (motor current, RPM, vibration) streams through three stag
 Clone the repository:
 
 ```bash
-git clone https://github.com/confluentinc/quickstart-streaming-agents.git
-cd quickstart-streaming-agents
+git clone https://github.com/confluentinc/quickstart-ai-ml-functions.git
+cd quickstart-ai-ml-functions
 ```
 
 Run the deployment script:
+
+> [!CAUTION]
+> You must be logged in to the Confluent CLI (`confluent login`) before running the deploy command.
 
 ```bash
 uv run deploy lab1
