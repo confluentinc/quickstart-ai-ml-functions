@@ -113,7 +113,7 @@ On startup, the generator **burst-produces 60 minutes of backdated records** (60
 Publishing to 'lab3_tower_traffic' — 10 towers — Ctrl+C to stop
 ```
 
-## Deploy Flink pipelines (after datagen runs for 1+ minute)
+**4. Deploy Flink pipelines** (after datagen runs for 1+ minute):
 
 ```bash
 uv run lab3-flink
@@ -139,7 +139,7 @@ The generator's traffic shape is a daily curve with a morning peak (~08:00 UTC, 
 | Scenario             | What it does                                                                                                                                                                | When to use                                                                                                                                                   |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `realtime` (default) | Uses wall-clock UTC time. The traffic shape advances naturally.                                                                                                             | Long-running deployments; when you want to observe real diurnal behavior. **Outside ~07-09 and ~17-20 UTC, alerts will be empty — this is correct behavior.** |
-| `peak`               | Starts simulated time at 17:00 UTC and advances at wall-clock pace. The underlying curve sits at ~87% utilization; ±12% jitter per reading means individual values range 75-99%, so most windows breach the 85% alert threshold without any clipping at 100%. Stays in this band for the first ~90 wall minutes. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
+| `peak`               | Starts simulated time at 17:00 UTC and advances at 0.25× wall-clock — slow enough that a long demo stays near 17:00 instead of drifting into the 18:30 natural peak where the curve clips at 100% and ARIMA forecasts blow up. Underlying curve sits at ~87% utilization; ±12% per-reading jitter gives a typical range of 75-99%, so most windows breach the 85% alert threshold. TUMBLE windows close every ~40 wall-seconds. | Live demos where you need the alert pipeline to fire reliably within ~2 minutes regardless of when you're running.                                            |
 | `cycle`              | Compresses 24 simulated hours into ~6 wall-clock minutes. Live mode cycles through the full curve repeatedly.                                                               | Learning/teaching — the most interesting story because ARIMA visibly tracks the trough → peak transition and forecasts ahead of the breach.                   |
 
 ---

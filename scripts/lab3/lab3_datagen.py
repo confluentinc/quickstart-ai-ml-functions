@@ -109,14 +109,17 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
     Scenarios:
       realtime  wall-clock UTC. Backfill spans `backfill_minutes` of recent
                 history at one minute per step.
-      peak      simulated time starts at 17:00 UTC and advances forward at
-                wall-clock pace. Backfill spans the 10 simulated minutes
-                leading up to 17:00 at 10-second steps. The underlying
-                traffic curve sits at ~82-87% across that band (jitter of
-                ±12% per reading means individual records can range from
-                ~70% to ~99%); most readings sit above the 85% alert
-                threshold and none are clipped at 100%, so ARIMA's
-                training distribution stays intact.
+      peak      simulated time starts at 17:00 UTC and advances at 0.25×
+                wall-clock — slow enough that a long demo stays near
+                17:00 instead of drifting into the 18:30 natural peak
+                where the curve itself clips at 100%. Backfill spans the
+                10 simulated minutes leading up to 17:00 at 10-second
+                steps. The underlying curve sits at ~82-87% across the
+                backfill band and ~87-90% across a typical-length live
+                demo; ±12% per-reading jitter means individual records
+                can land outside that band, but the underlying signal
+                stays unclipped so ARIMA's training distribution stays
+                intact.
       cycle     simulated time starts at today's midnight and advances at
                 240× wall-clock — one full 24h day every ~6 wall minutes.
                 Backfill spans one full simulated day ending just before
@@ -131,7 +134,13 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
         backfill_window = timedelta(minutes=backfill_minutes)
     elif scenario == "peak":
         sim_start = _peak_time(start)
-        speed = 1.0
+        # speed=0.25 advances simulated time at 1/4 wall-clock so a long demo
+        # stays near 17:00 instead of drifting toward the 18:30 natural peak
+        # where the curve itself clips at 100% and ARIMA's training
+        # distribution truncates (the "131% extrapolation" failure mode).
+        # At this rate sim time crosses 17:25 (curve hits 100%) only after
+        # ~100 wall-minutes; TUMBLE windows close every ~40 wall-seconds.
+        speed = 0.25
         # 10 seconds per backfill step keeps every record within the peak band
         # and ensures each lands in its own 10-second TUMBLE window.
         backfill_window = timedelta(seconds=10 * backfill_minutes)
@@ -279,7 +288,7 @@ def main() -> None:
         help=(
             "Traffic-shape time source: "
             "'realtime' uses wall-clock UTC (default; alerts only fire ~07-09 and ~17-20 UTC). "
-            "'peak' starts simulated time at 17:00 UTC (~87%% utilization) and advances at wall-clock pace so alerts fire reliably from the first window. "
+            "'peak' starts simulated time at 17:00 UTC (~87%% utilization) and advances at 0.25x wall-clock so alerts fire reliably from the first window without drifting into 100%% clipping. "
             "'cycle' compresses 24h into ~6 wall minutes so live mode cycles through peaks and troughs."
         ),
     )
