@@ -9,6 +9,18 @@ on cash advance frequency — flagging unusual activity the moment it appears in
 
 ## Deploy the Demo
 
+If you haven't cloned the repository yet, clone it first:
+
+```bash
+git clone https://github.com/confluentinc/quickstart-ai-ml-functions.git
+cd quickstart-ai-ml-functions
+```
+
+Run the deployment script:
+
+> [!CAUTION]
+> You must be logged in to the Confluent CLI (`confluent login`) before running the deploy command.
+
 ```bash
 uv run deploy lab2
 ```
@@ -28,7 +40,7 @@ The `payments` topic streams ~10 payment records per second across 50 customers.
 - **Cash advance spikes:** `CASH_ADVANCE` transaction type appears at ~10% average baseline; per-customer bursts above that
   baseline are flagged
 
-To explore the source data:
+To explore the source data, open a SQL workspace in the [Confluent Cloud Flink UI](https://confluent.cloud/go/flink), select your environment and compute pool, and run the following query.
 
 ```sql
 SELECT * FROM payments LIMIT 10;
@@ -36,7 +48,7 @@ SELECT * FROM payments LIMIT 10;
 
 Example output:
 
-| transaction_id | customer_id | amount  | transaction_type | transaction_ts          |
+| payment_id | customer_id | amount  | transaction_type | transaction_ts          |
 | -------------- | ----------- | ------- | ---------------- | ----------------------- |
 | txn-00042      | cust-017    | 34.50   | PURCHASE         | 2026-04-01 12:39:01.000 |
 | txn-00043      | cust-031    | 8750.00 | PURCHASE         | 2026-04-01 12:39:01.000 |
@@ -45,13 +57,13 @@ Example output:
 
 ### 1. Create the `payments_flagged` Table
 
-Open a SQL workspace in the [Confluent Cloud Flink UI](https://confluent.cloud/go/flink), select your environment and compute pool, and run the following query.
-
-Two `ML_DETECT_ANOMALIES` models run **per customer** — one on transaction amount, one on cash advance frequency. Any
+In the [Flink compute pool](https://confluent.cloud/go/flink), run two `ML_DETECT_ANOMALIES` models **per customer** — one on transaction amount, one on cash advance frequency. Any
 transaction where either model fires an anomaly is emitted to `payments_flagged`.
 
+The result is persisted as a [materialized table](https://docs.confluent.io/cloud/current/flink/concepts/dynamic-tables.html), so downstream consumers can query the latest fraud-flagged transactions directly.
+
 ```sql
-CREATE TABLE payments_flagged AS
+CREATE OR ALTER MATERIALIZED TABLE payments_flagged AS
 WITH with_anom AS (
   SELECT
     p.*,
@@ -113,8 +125,9 @@ downstream consumers can tell which signal triggered the alert.
 > [!NOTE]
 >
 > `minTrainingSize: 10` is set low so models warm up quickly for demo purposes. Each ARIMA model trains independently
-> per customer — with 50 customers that's 100 concurrent models from a single SQL statement. Expect a short delay before
-> the first anomalies appear.
+> per customer — with 50 customers that's 100 concurrent models from a single SQL statement.
+>
+> Expect a delay of **2–3 minutes** before the first anomalies appear.
 
 To see the fraud detection results:
 
@@ -124,12 +137,79 @@ SELECT * FROM payments_flagged;
 
 Example output:
 
-| transaction_id | customer_id | amount  | transaction_type | is_amount_anomaly | is_cash_advance_anomaly |
-|----------------|-------------|---------|------------------|-------------------|-------------------------|
-| txn-00043      | cust-031    | 8750.00 | PURCHASE         | TRUE              | FALSE                   |
-| txn-00107      | cust-014    | 22.50   | CASH_ADVANCE     | FALSE             | TRUE                    |
-| txn-00219      | cust-031    | 8750.00 | PURCHASE         | TRUE              | FALSE                   |
-| txn-00334      | cust-008    | 41.25   | CASH_ADVANCE     | FALSE             | TRUE                    |
+<img src="./assets/lab2/Lab2-p1results.png" alt="payments_flagged results" style="max-width: 90%;" />
+
+🎉 **Nice work — that's the core fraud detection job done.** Anomalies are flowing in real time. Now let's do some real-time stream processing on top: reshape the data so it's ready for reporting, dashboards, and other downstream use cases.
+
+### 2. Flatten the Anomaly Struct Fields
+
+`payments_flagged` keeps the `amount_anom` and `cash_anom` structs returned by `ML_DETECT_ANOMALIES`. Flatten them into top-level columns so downstream consumers — dashboards, alerting jobs, sinks like Snowflake, BigQuery, Databricks, or OpenSearch — can read the bounds and forecast values without struct navigation.
+
+```sql
+CREATE OR ALTER MATERIALIZED TABLE payments_flagged_flat AS
+SELECT
+  payment_id,
+  customer_id,
+  transaction_ts,
+  amount,
+  transaction_type,
+  merchant_name,
+  merchant_category,
+  payment_method,
+  card_type,
+  channel,
+  country_code,
+  is_amount_anomaly,
+  CAST(ROUND(amount_anom.upper_bound, 2) AS DOUBLE) AS amount_upper_bound,
+  amount_anom.forecast_value                        AS amount_forecast_value,
+  is_cash_advance_anomaly,
+  cash_anom.upper_bound                             AS cash_upper_bound,
+  cash_anom.forecast_value                          AS cash_forecast_value
+FROM payments_flagged;
+```
+
+Query the flattened results:
+
+```sql
+SELECT * FROM payments_flagged_flat;
+```
+
+Example output:
+
+| payment_id | customer_id | amount  | transaction_type | is_amount_anomaly | amount_upper_bound | amount_forecast_value | is_cash_advance_anomaly | cash_forecast_value |
+|------------|-------------|---------|------------------|-------------------|--------------------|-----------------------|-------------------------|---------------------|
+| pay-00043  | CUST-0031   | 8750.00 | PURCHASE         | TRUE              | 142.80             | 58.92                 | FALSE                   | 0.08                |
+| pay-00107  | CUST-0014   | 22.50   | CASH_ADVANCE     | FALSE             | 118.45             | 61.30                 | TRUE                    | 0.11                |
+
+### 3. 🎯 Challenge: Where Is the Fraud Hitting Hardest? 💸
+
+**Mission brief.** Fraud ops just pinged you on Slack: *"Which merchant categories are bleeding the most money? We need this on the dashboard by EOD."*
+
+You have `payments_flagged_flat` streaming live. Build one materialized table named `fraud_by_merchant_category` that answers two questions per merchant category:
+
+1. **How many** flagged transactions?
+2. **How much** money is on the line?
+
+Start from this skeleton and fill in `<YOUR_LOGIC>`:
+
+```sql
+CREATE OR ALTER MATERIALIZED TABLE fraud_by_merchant_category AS
+SELECT
+  <YOUR_LOGIC>
+```
+
+When you nail it, your output should look like this:
+
+<img src="./assets/lab2/Lab2-results.png" alt="Fraud by merchant category results" style="max-width: 90%;" />
+
+<details>
+<summary>Stuck? Peek at a hint</summary>
+
+- Two aggregate functions will get you the whole way there
+- Don't forget the `GROUP BY`
+- Want the clean 2-decimal totals from the screenshot? `CAST(ROUND(..., 2) AS DOUBLE)`
+
+</details>
 
 ## Navigation
 

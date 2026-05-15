@@ -81,6 +81,9 @@ cd quickstart-ai-ml-functions
 
 **2. Deploy Lab 3:**
 
+> [!CAUTION]
+> You must be logged in to the Confluent CLI (`confluent login`) before running the deploy command.
+
 ```bash
 # If already deployed skip to next step, else if not already deployed, destroy and redeploy
 uv run destroy
