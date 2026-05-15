@@ -144,15 +144,15 @@ def main() -> None:
         if result.returncode != 0:
             err = result.stderr.strip()
             if "already exists" in err.lower():
-                print(f"  ❌ Statement or destination table already exists.")
-                print(f"     A previous run likely left broken state. Clean up and retry:")
+                print("  ❌ Statement or destination table already exists.")
+                print("     A previous run likely left broken state. Clean up and retry:")
                 print(f"       confluent flink statement delete {stmt['name']} --environment {env_id}")
-                print(f"       confluent kafka topic delete <destination_topic> --cluster <cluster-id>")
-                print(f"     Or simplest: `uv run destroy && uv run deploy` and start over.")
+                print("       confluent kafka topic delete <destination_topic> --cluster <cluster-id>")
+                print("     Or simplest: `uv run destroy && uv run deploy` and start over.")
                 sys.exit(1)
             print(f"  ❌ Failed: {err}")
             sys.exit(1)
-        print(f"  ✅ Submitted successfully")
+        print("  ✅ Submitted successfully")
 
         if i < len(STATEMENTS):
             time.sleep(3)  # Brief pause between statements
