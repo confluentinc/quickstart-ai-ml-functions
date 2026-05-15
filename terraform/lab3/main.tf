@@ -44,44 +44,13 @@ resource "confluent_kafka_topic" "lab3_tower_traffic" {
   }
 }
 
-resource "confluent_kafka_topic" "lab3_tower_agg" {
-  kafka_cluster {
-    id = local.kafka_cluster_id
-  }
-  topic_name       = "lab3_tower_agg"
-  partitions_count = 6
-  rest_endpoint    = local.kafka_rest_endpoint
-  credentials {
-    key    = local.kafka_api_key
-    secret = local.kafka_api_secret
-  }
-}
-
-resource "confluent_kafka_topic" "lab3_forecasts" {
-  kafka_cluster {
-    id = local.kafka_cluster_id
-  }
-  topic_name       = "lab3_forecasts"
-  partitions_count = 6
-  rest_endpoint    = local.kafka_rest_endpoint
-  credentials {
-    key    = local.kafka_api_key
-    secret = local.kafka_api_secret
-  }
-}
-
-resource "confluent_kafka_topic" "lab3_capacity_alerts" {
-  kafka_cluster {
-    id = local.kafka_cluster_id
-  }
-  topic_name       = "lab3_capacity_alerts"
-  partitions_count = 6
-  rest_endpoint    = local.kafka_rest_endpoint
-  credentials {
-    key    = local.kafka_api_key
-    secret = local.kafka_api_secret
-  }
-}
+# NOTE: lab3_tower_agg, lab3_forecasts, lab3_capacity_alerts are intentionally
+# NOT pre-created here. They are CTAS destinations created by `uv run lab3-flink`.
+# Pre-creating these topics causes the CTAS to bind to the empty topic with a
+# default (key BYTES, val BYTES) schema instead of inferring columns from the
+# SELECT — producing a `COMPLETED` no-op statement and downstream "column not
+# found" validation errors. `DISTRIBUTED INTO 6 BUCKETS` in each CTAS sets the
+# partition count.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Flink DDL: lab3_tower_traffic (source table — AVRO from Python datagen)
