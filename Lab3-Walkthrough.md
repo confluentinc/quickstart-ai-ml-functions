@@ -172,8 +172,8 @@ You should see all 10 towers streaming in, with `throughput_mbps` values that re
 The `lab3_tower_agg` pipeline computes per-tower windowed statistics. This CTAS is submitted by `uv run lab3-flink` — the SQL below is for reference; you do not need to run it manually.
 
 ```sql
-CREATE TABLE lab3_tower_agg
-DISTRIBUTED INTO 6 BUCKETS
+CREATE OR ALTER MATERIALIZED TABLE lab3_tower_agg
+DISTRIBUTED BY (tower_id) INTO 6 BUCKETS
 AS
 SELECT
   tower_id,
@@ -218,8 +218,8 @@ This is the heart of the lab. **ML_FORECAST with `PARTITION BY tower_id` trains 
 This CTAS is submitted by `uv run lab3-flink` — the SQL below is for reference; you do not need to run it manually.
 
 ```sql
-CREATE TABLE lab3_forecasts
-DISTRIBUTED INTO 6 BUCKETS
+CREATE OR ALTER MATERIALIZED TABLE lab3_forecasts
+DISTRIBUTED BY (tower_id) INTO 6 BUCKETS
 AS
 SELECT
   tower_id,
@@ -284,8 +284,8 @@ LIMIT 20;
 The `lab3_capacity_alerts` pipeline filters the forecast stream and emits a structured alert whenever any tower is predicted to exceed **85% capacity within the next forecast step (~1 minute in this demo)**. This CTAS is submitted by `uv run lab3-flink` — the SQL below is for reference; you do not need to run it manually.
 
 ```sql
-CREATE TABLE lab3_capacity_alerts
-DISTRIBUTED INTO 6 BUCKETS
+CREATE OR ALTER MATERIALIZED TABLE lab3_capacity_alerts
+DISTRIBUTED BY (tower_id) INTO 6 BUCKETS
 AS
 SELECT
   lf.tower_id,

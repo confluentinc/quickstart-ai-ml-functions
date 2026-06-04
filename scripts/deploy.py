@@ -21,7 +21,7 @@ from scripts.common.credentials import (
     generate_confluent_api_keys,
     load_or_create_credentials_file,
 )
-from scripts.common.login_checks import check_confluent_login
+from scripts.common.login_checks import ensure_confluent_login
 from scripts.common.terraform import get_project_root, run_terraform_output
 from scripts.common.terraform_runner import run_terraform
 from scripts.common.tfvars import write_tfvars_for_deployment
@@ -107,11 +107,8 @@ def main() -> None:
 
     # INTERACTIVE MODE: Original flow
     else:
-        # Step 0: Check Confluent CLI login
-        if not check_confluent_login():
-            print("\nError: Not logged into Confluent Cloud.")
-            print("Please run: confluent login")
-            sys.exit(1)
+        # Step 0: Check Confluent CLI login (auto-login from credentials.env if available)
+        ensure_confluent_login()
         print("✓ Confluent CLI logged in")
 
         # Step 1: Select cloud provider

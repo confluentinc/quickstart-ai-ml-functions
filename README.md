@@ -18,8 +18,8 @@ Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/con
 <td>Real-time fraud detection on a synthetic payments stream using <code>ML_DETECT_ANOMALIES</code> with ARIMA to flag spikes in average transaction size and unusual cash advance patterns.<br><br><img src="./assets/lab2/Lab2-architecture.png" alt="Lab 2 architecture diagram"></td>
 </tr>
 <tr>
-<td><strong>Lab 3 – Coming Soon</strong></td>
-<td> </td>
+<td><a href="./Lab3-Walkthrough.md"><strong>Lab 3 – Network Capacity Forecasting</strong></a></td>
+<td>Real-time per-tower capacity forecasting using <code>ML_FORECAST</code> with per-tower ARIMA models to alert before network congestion impacts customers.</td>
 </tr>
 <tr>
 <td><strong>Lab 4 – Coming Soon</strong></td>

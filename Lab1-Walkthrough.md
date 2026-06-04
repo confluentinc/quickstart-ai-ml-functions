@@ -60,7 +60,7 @@ Example event:
 Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index. Run the following in the Flink SQL workspace:
 
 ```sql
-CREATE TABLE machine_health_features AS
+CREATE OR ALTER MATERIALIZED TABLE machine_health_features AS
 SELECT
     machine_id,
     ts,
@@ -82,7 +82,7 @@ FROM cnc_machine_signals;
 Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags rows where smoothed vibration falls outside the predicted range.
 
 ```sql
-CREATE TABLE equipment_anomalies AS
+CREATE OR ALTER MATERIALIZED TABLE equipment_anomalies AS
 SELECT
     machine_id,
     ts,

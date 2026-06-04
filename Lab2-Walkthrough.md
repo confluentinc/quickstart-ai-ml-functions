@@ -192,7 +192,7 @@ You have `payments_flagged_flat` streaming live. Build one materialized table na
 
 Start from this skeleton and fill in `<YOUR_LOGIC>`:
 
-```sql
+```sql no-parse
 CREATE OR ALTER MATERIALIZED TABLE fraud_by_merchant_category AS
 SELECT
   <YOUR_LOGIC>

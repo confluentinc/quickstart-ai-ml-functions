@@ -23,6 +23,8 @@ claude-*
 # Development tools
 tools/
 handoffs/
+CONTEXT.md
+docs/plans/
 
 # detect-secrets
 .secrets.baseline
@@ -106,5 +108,9 @@ chunks.json
 venv/
 env/
 
-# Testing infrastructure (contains sensitive credentials)
-tests/
+# Sensitive test artifacts (kept narrow so scripts/tests/ source files track normally;
+# the broader `tests/` exclusion that lived here used to accidentally hide every
+# test file under scripts/tests/ from git).
+**/credentials.env
+**/*.tfstate
+**/*.tfstate.backup

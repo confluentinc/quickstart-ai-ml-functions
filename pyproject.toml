@@ -69,6 +69,7 @@ deployment-summary = "scripts.common.generate_deployment_summary:main"
 tests = "scripts.tests.run:full"
 lab3-datagen = "scripts.lab3.lab3_datagen:main"
 lab3-flink = "scripts.lab3.lab3_flink:main"
+setup-mcp = "scripts.mcp_setup:main"
 
 
 [project.urls]
