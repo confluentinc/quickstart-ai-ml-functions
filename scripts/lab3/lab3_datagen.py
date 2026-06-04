@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Lab 3 — Tower Traffic Data Generator
+Lab 3 - Tower Traffic Data Generator
 
 Simulates 10 cell towers across 3 regions (NYC, Chicago, LA) with realistic
 daily traffic patterns (morning/evening peaks, nighttime dips) and publishes
@@ -10,13 +10,13 @@ Each message represents one telemetry snapshot per tower and includes:
   tower_id, region, ts_ms (epoch ms), throughput_mbps, active_users,
   signal_strength_dbm, capacity_mbps
 
-Credentials are loaded automatically from terraform/core/terraform.tfstate —
+Credentials are loaded automatically from terraform/core/terraform.tfstate -
 no manual copy-paste required.
 
 Usage:
     uv run lab3-datagen                         # backfill 60 min, then live (realtime)
-    uv run lab3-datagen --scenario peak         # start at 17:00 UTC — alerts fire reliably
-    uv run lab3-datagen --scenario cycle        # 24h compressed into ~6 min — peaks/troughs live
+    uv run lab3-datagen --scenario peak         # start at 17:00 UTC - alerts fire reliably
+    uv run lab3-datagen --scenario cycle        # 24h compressed into ~6 min - peaks/troughs live
     uv run lab3-datagen --backfill-minutes 90   # more history for slower workshops
     uv run lab3-datagen --no-backfill           # skip backfill, live mode only
     uv run lab3-datagen --interval 0.5          # faster live cadence
@@ -24,7 +24,6 @@ Usage:
 """
 
 import argparse
-import json
 import math
 import signal
 import sys
@@ -38,7 +37,7 @@ try:
     from confluent_kafka import Producer
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroSerializer
-    from confluent_kafka.serialization import SerializationContext, MessageField, StringSerializer
+    from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
 
     CONFLUENT_KAFKA_AVAILABLE = True
 except ImportError:
@@ -65,7 +64,7 @@ TOWER_TRAFFIC_SCHEMA = """{
   ]
 }"""
 
-# 10 towers across 3 regions — capacity_mbps is the per-tower ceiling used
+# 10 towers across 3 regions - capacity_mbps is the per-tower ceiling used
 # by the alert pipeline to compute utilisation percentage.
 TOWERS = [
     {"tower_id": "TOWER-NYC-01", "region": "NYC", "capacity_mbps": 1000.0},
@@ -85,7 +84,7 @@ SCENARIOS = ("realtime", "peak", "cycle")
 CYCLE_SPEED_FACTOR = 240  # 24 simulated hours per 6 wall-clock minutes
 
 # Pin `peak` mode 90 minutes before the 18:30 evening peak. At this point the
-# natural curve sits at ~87% utilization, jitter range [75%, 99%] — well above
+# natural curve sits at ~87% utilization, jitter range [75%, 99%] - well above
 # the 85% alert threshold, but NOT clipped at 100%. Clipping at 100% truncates
 # ARIMA's training distribution and leads to absurd forecast extrapolations
 # (e.g. 131% utilization).
@@ -102,26 +101,26 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
     Build the time-source callables for a given --scenario.
 
     Returns (live_now, backfill_at). Both produce monotonically increasing
-    simulated timestamps that are written as the Kafka record timestamp —
+    simulated timestamps that are written as the Kafka record timestamp -
     Flink's TUMBLE window keys off `DESCRIPTOR($rowtime)`, which is the
     Kafka record timestamp, not the `ts_ms` payload field.
 
     Scenarios:
       realtime  wall-clock UTC. Backfill spans `backfill_minutes` of recent
                 history at one minute per step.
-      peak      simulated time starts at 17:00 UTC and advances at 0.25×
-                wall-clock — slow enough that a long demo stays near
+      peak      simulated time starts at 17:00 UTC and advances at 0.25x
+                wall-clock - slow enough that a long demo stays near
                 17:00 instead of drifting into the 18:30 natural peak
                 where the curve itself clips at 100%. Backfill spans the
                 10 simulated minutes leading up to 17:00 at 10-second
                 steps. The underlying curve sits at ~82-87% across the
                 backfill band and ~87-90% across a typical-length live
-                demo; ±12% per-reading jitter means individual records
+                demo; +/-12% per-reading jitter means individual records
                 can land outside that band, but the underlying signal
                 stays unclipped so ARIMA's training distribution stays
                 intact.
       cycle     simulated time starts at today's midnight and advances at
-                240× wall-clock — one full 24h day every ~6 wall minutes.
+                240x wall-clock - one full 24h day every ~6 wall minutes.
                 Backfill spans one full simulated day ending just before
                 live mode starts, so ARIMA trains on the entire diurnal
                 curve before live mode begins.
@@ -166,12 +165,12 @@ def _scenario_time_sources(scenario: str, backfill_minutes: int):
 
 def _traffic_utilization(hour: float) -> float:
     """
-    Return a utilisation fraction in [0, 1] for the given fractional hour (0–24).
+    Return a utilisation fraction in [0, 1] for the given fractional hour (0-24).
 
     Traffic shape:
-      - Morning rush  ~07:00–09:00  peak ~85 %
-      - Evening rush  ~17:00–20:00  peak ~98 %
-      - Late night    ~02:00–05:00  trough ~18 %
+      - Morning rush  ~07:00-09:00  peak ~85 %
+      - Evening rush  ~17:00-20:00  peak ~98 %
+      - Late night    ~02:00-05:00  trough ~18 %
     """
     morning = 0.85 * math.exp(-0.5 * ((hour - 8.0) / 1.2) ** 2)
     evening = 0.98 * math.exp(-0.5 * ((hour - 18.5) / 1.8) ** 2)
@@ -184,7 +183,7 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     now = at or datetime.now(timezone.utc)
     hour = now.hour + now.minute / 60.0
 
-    # Per-tower utilisation with random jitter (±12 %)
+    # Per-tower utilisation with random jitter (+/-12 %)
     jitter = fake.pyfloat(min_value=-0.12, max_value=0.12, right_digits=3)
     utilization = min(1.0, max(0.05, _traffic_utilization(hour) + jitter))
 
@@ -194,13 +193,13 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     user_jitter = fake.pyfloat(min_value=0.9, max_value=1.1, right_digits=3)
     active_users = int(utilization * 5000 * user_jitter)
 
-    # Signal strength degrades at high load: -65 dBm (light) → -100 dBm (heavy)
+    # Signal strength degrades at high load: -65 dBm (light) to -100 dBm (heavy)
     signal_dbm = int(-65 - (utilization * 35)) + fake.pyint(min_value=-3, max_value=3)
 
     return {
         "tower_id": tower["tower_id"],
         "region": tower["region"],
-        # Epoch milliseconds — mapped to TIMESTAMP_LTZ(3) in the Flink table
+        # Epoch milliseconds - mapped to TIMESTAMP_LTZ(3) in the Flink table
         "ts_ms": int(now.timestamp() * 1000),
         "throughput_mbps": throughput,
         "active_users": active_users,
@@ -209,15 +208,17 @@ def _generate_reading(tower: dict[str, Any], fake: Faker, at: datetime | None = 
     }
 
 
-def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, delivery_cb, backfill_minutes: int, backfill_at) -> int:
+def _backfill(
+    producer, key_serializer, value_serializer, fake: Faker, logger, delivery_cb, backfill_minutes: int, backfill_at
+) -> int:
     """
     Burst-produce backdated records oldest-first to warm the ARIMA model.
 
     Produces one snapshot per tower per backfill step. Step spacing depends
     on the scenario: one simulated minute per step in `realtime`, ten
     simulated seconds per step in `peak`, and an even subdivision of one
-    simulated 24h day in `cycle`. 60 steps × 10 towers = 600 records, sent
-    in ~1–2 seconds of wall-clock.
+    simulated 24h day in `cycle`. 60 steps x 10 towers = 600 records, sent
+    in ~1-2 seconds of wall-clock.
 
     Records must be produced in chronological order so Flink's event-time
     watermark advances forward and the TUMBLE windows close in sequence.
@@ -225,7 +226,7 @@ def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, d
     total = 0
 
     print(
-        f"[backfill] Producing {backfill_minutes} steps × {len(TOWERS)} towers = "
+        f"[backfill] Producing {backfill_minutes} steps x {len(TOWERS)} towers = "
         f"{backfill_minutes * len(TOWERS)} records (oldest-first)..."
     )
 
@@ -249,15 +250,14 @@ def _backfill(producer, key_serializer, value_serializer, fake: Faker, logger, d
         producer.poll(0)
 
     producer.flush()
-    logger.info("[backfill] Done — %d records published", total)
+    logger.info("[backfill] Done - %d records published", total)
     return total
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Lab 3 tower traffic generator — publishes one snapshot per tower "
-            "per interval to `lab3_tower_traffic`."
+            "Lab 3 tower traffic generator - publishes one snapshot per tower per interval to `lab3_tower_traffic`."
         )
     )
     parser.add_argument(
@@ -273,8 +273,8 @@ def main() -> None:
         type=int,
         default=60,
         metavar="N",
-        help="Minutes of backdated history to burst-produce on startup (default: 60 → 12 windows). "
-             "Must be ≥ 10 × 5 = 50 to satisfy ML_FORECAST minTrainingSize=10.",
+        help="Minutes of backdated history to burst-produce on startup (default: 60 -> 12 windows). "
+        "Must be >= 10 x 5 = 50 to satisfy ML_FORECAST minTrainingSize=10.",
     )
     parser.add_argument(
         "--no-backfill",
@@ -333,7 +333,7 @@ def main() -> None:
             logger.error("Delivery failed [%s]: %s", msg.topic(), err)
         elif args.verbose:
             logger.debug(
-                "Delivered → %s[%d] offset=%d",
+                "Delivered -> %s[%d] offset=%d",
                 msg.topic(),
                 msg.partition(),
                 msg.offset(),
@@ -354,10 +354,12 @@ def main() -> None:
     print(f"Scenario: {args.scenario}")
 
     if not args.no_backfill:
-        _backfill(producer, key_serializer, value_serializer, fake, logger, _delivery_cb, args.backfill_minutes, backfill_at)
+        _backfill(
+            producer, key_serializer, value_serializer, fake, logger, _delivery_cb, args.backfill_minutes, backfill_at
+        )
         print("[backfill] Switching to live mode...")
 
-    print(f"Publishing to '{TOPIC}' — {len(TOWERS)} towers — Ctrl+C to stop")
+    print(f"Publishing to '{TOPIC}' - {len(TOWERS)} towers - Ctrl+C to stop")
     total = 0
 
     while running:

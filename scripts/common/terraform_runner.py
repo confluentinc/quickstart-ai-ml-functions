@@ -76,7 +76,7 @@ def run_terraform_destroy(env_path: Path, auto_approve: bool = True) -> bool:
     try:
         subprocess.run(["terraform", "init"], cwd=env_path, check=True)
 
-        destroy_cmd = ["terraform", "destroy"]
+        destroy_cmd = ["terraform", "destroy", "-refresh=false"]
         if auto_approve:
             destroy_cmd.append("-auto-approve")
 
