@@ -146,8 +146,9 @@ SELECT
     machine_id,
     ts,
     1450 + (5 * SIN(CAST(EXTRACT(SECOND FROM ts) AS DOUBLE))) AS rpm,
-    CASE 
+    CASE
         WHEN EXTRACT(SECOND FROM ts) BETWEEN 50 AND 55
+             AND machine_id IN ('CNC-101', 'CNC-103')
         THEN 0.85 + (RAND() * 0.1)
         ELSE 0.02 + (RAND() * 0.01)
     END AS vibration_raw,

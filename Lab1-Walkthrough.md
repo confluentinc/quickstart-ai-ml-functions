@@ -128,8 +128,8 @@ SELECT * FROM equipment_anomalies;
 
 | Machine | Timestamp | Vibration | Anomaly |
 | ------- | --------- | --------- | ------- |
-| CNC-01  | 12:41:02  | 0.18      | TRUE    |
-| CNC-09  | 12:45:59  | 0.35      | TRUE    |
+| CNC-101 | 12:41:02  | 0.18      | TRUE    |
+| CNC-103 | 12:45:59  | 0.35      | TRUE    |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 
