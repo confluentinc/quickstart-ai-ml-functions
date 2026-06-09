@@ -4,7 +4,7 @@ This lab builds a real-time anomaly detection pipeline for CNC machine telemetry
 
 <img src="./assets/lab1/lab1-architecture.png" alt="Architecture Diagram" style="max-width: 50%;" />
 
-Simulated sensor data (motor current, RPM, vibration) streams through three stages: raw telemetry from CNC machines → smoothed health features → per-machine anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
+Simulated sensor data (motor current, RPM, vibration) streams from CNC machines directly into anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
 
 ---
 
@@ -55,67 +55,42 @@ Example event:
 
 ---
 
-### 2. Sensor Feature Transformation
+### 2. Detect Machine Anomalies
 
-Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index. Run the following in the Flink SQL workspace:
-
-```sql
-CREATE OR ALTER MATERIALIZED TABLE machine_health_features AS
-SELECT
-    machine_id,
-    ts,
-    vibration_raw,
-    -- Smoothing: Average of the last 10 rows
-    AVG(vibration_raw) OVER (
-        PARTITION BY machine_id
-        ORDER BY ts
-        ROWS BETWEEN 10 PRECEDING AND CURRENT ROW
-    ) AS vibration_smoothed,
-    (rpm / NULLIF(motor_current, 0)) AS efficiency_index
-FROM cnc_machine_signals;
-```
-
----
-
-### 3. Detect Machine Anomalies
-
-Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags rows where smoothed vibration falls outside the predicted range.
+Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags rows where vibration falls outside the predicted confidence interval.
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE equipment_anomalies AS
 SELECT
     machine_id,
     ts,
-    vibration_smoothed,
-    anomaly
+    vibration_raw,
+    anomaly.is_anomaly,
+    anomaly.forecast_value,
+    anomaly.lower_bound,
+    anomaly.upper_bound
 FROM (
     SELECT
         machine_id,
         ts,
         vibration_raw,
-        vibration_smoothed,
-        efficiency_index,
         ML_DETECT_ANOMALIES(
-            vibration_smoothed,
+            vibration_raw,
             ts,
             JSON_OBJECT(
-                'p'               VALUE 1,
-                'q'               VALUE 1,
-                'd'               VALUE 1,
-                'minTrainingSize' VALUE 50,
-                'maxTrainingSize' VALUE 300,
-                'evalWindowSize'  VALUE 20,
-                'horizon'         VALUE 5,
-                'enableStl'       VALUE FALSE
+                'minTrainingSize'      VALUE 50,
+                'maxTrainingSize'      VALUE 300,
+                'confidencePercentage' VALUE 99.0
             )
         ) OVER (
             PARTITION BY machine_id
             ORDER BY ts
             RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS anomaly
-    FROM machine_health_features
+    FROM cnc_machine_signals
 )
-WHERE anomaly.is_anomaly = TRUE;
+WHERE anomaly.is_anomaly = TRUE
+  AND vibration_raw > anomaly.upper_bound;
 ```
 
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
@@ -126,10 +101,10 @@ Query the results:
 SELECT * FROM equipment_anomalies;
 ```
 
-| Machine | Timestamp | Vibration | Anomaly |
-| ------- | --------- | --------- | ------- |
-| CNC-101 | 12:41:02  | 0.18      | TRUE    |
-| CNC-103 | 12:45:59  | 0.35      | TRUE    |
+| Machine | Timestamp | Vibration | Is Anomaly | Forecast | Lower Bound | Upper Bound |
+| ------- | --------- | --------- | ---------- | -------- | ----------- | ----------- |
+| CNC-101 | 12:41:02  | 0.87      | true       | 0.021    | 0.010       | 0.035       |
+| CNC-103 | 12:45:59  | 0.91      | true       | 0.019    | 0.008       | 0.032       |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 
