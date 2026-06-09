@@ -7,6 +7,33 @@ on cash advance frequency — flagging unusual activity the moment it appears in
 
 [Learn more about the built-in anomaly detection functions on Confluent Cloud for Apache Flink.](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
 
+---
+
+## Prerequisites
+
+**Required accounts & credentials:**
+
+[![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/)
+
+<details>
+<summary>Install the Prerequisities (Mac/Windows)</summary>
+
+**Mac:**
+
+```bash
+brew install uv git python && brew tap hashicorp/tap && brew install hashicorp/tap/terraform && brew install --cask confluent-cli
+```
+
+**Windows:**
+
+```powershell
+winget install astral-sh.uv Git.Git Hashicorp.Terraform ConfluentInc.Confluent-CLI Python.Python
+```
+
+</details>
+
+---
+
 ## Deploy the Demo
 
 If you haven't cloned the repository yet, clone it first:
@@ -19,8 +46,14 @@ cd quickstart-ai-ml-functions
 Run the deployment script:
 
 ```bash
-uv run deploy lab2
+uv run deploy
 ```
+
+> **Optional:** Register the project-scoped Confluent MCP server in Claude or Codex:
+>
+> ```bash
+> uv run setup-mcp
+> ```
 
 This provisions the core Confluent Cloud environment, along with the `payments` source table, which uses the [Flink faker connector](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) to generate ~10 synthetic payment records per second across 50 customers.
 
