@@ -114,3 +114,4 @@ env/
 **/credentials.env
 **/*.tfstate
 **/*.tfstate.backup
+/assets/
