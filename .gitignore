@@ -24,7 +24,6 @@ claude-*
 tools/
 handoffs/
 CONTEXT.md
-docs/plans/
 
 # detect-secrets
 .secrets.baseline
@@ -115,3 +114,4 @@ env/
 **/*.tfstate
 **/*.tfstate.backup
 /assets/
+/docs/
