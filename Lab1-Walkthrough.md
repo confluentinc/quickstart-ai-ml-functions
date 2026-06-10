@@ -60,7 +60,7 @@ uv run deploy
 
 ### 1. Understanding the Data
 
-The raw data pipeline is already set up — a Faker connector streams CNC machine telemetry into `cnc_machine_signals`. Explore it in the Flink SQL workspace:
+The raw data pipeline is already set up — a Faker connector streams CNC machine telemetry into `cnc_machine_signals`. Explore it in the [Flink SQL workspace](https://confluent.cloud/go/flink) (you'll need to pick your environment to get to the workspace):
 
 ```sql
 SELECT * FROM cnc_machine_signals;
@@ -81,11 +81,22 @@ Example event:
 }
 ```
 
+> [!NOTE]
+> These machines run motors and spindles at high RPM under load, so they're full of measurable signals:
+> - `motor_current` — how hard the motor is working
+> - `rpm` — spindle/motor rotational speed
+> - `voltage` — supply voltage
+> - `vibration_raw` — vibration on the bearings/spindle
+
 ---
 
 ### 2. Sensor Feature Transformation
 
-Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index. Run the following in the Flink SQL workspace:
+Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index.
+
+**Why smooth?** Raw vibration is noisy and jumps around every reading. Bearing wear shows up as a slow upward drift, not a single spike. Averaging the last 10 readings cancels the noise so the real trend stands out — otherwise the anomaly detector would fire on random jitter.
+
+Run the following in the Flink SQL workspace:
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE machine_health_features AS
@@ -101,6 +112,19 @@ SELECT
     ) AS vibration_smoothed,
     (rpm / NULLIF(motor_current, 0)) AS efficiency_index
 FROM cnc_machine_signals;
+```
+
+> [!TIP]
+> A **materialized table** combines a table definition with a continuous query — Flink keeps it updated automatically as new data arrives, so you query it like a normal table without managing the refresh. Benefits:
+> - **Always fresh** — results update continuously as new events stream in.
+> - **Logic evolution** — `CREATE OR ALTER` lets you change the query or schema in place; Flink migrates the pipeline for you, no manual offset handling.
+>
+> [Learn more](https://docs.confluent.io/cloud/current/flink/concepts/materialized-tables.html).
+
+Explore the output:
+
+```sql
+SELECT * FROM machine_health_features;
 ```
 
 ---
@@ -144,6 +168,11 @@ WHERE anomaly.is_anomaly = TRUE
   AND vibration_smoothed > anomaly.upper_bound;
 ```
 
+- **`PARTITION BY machine_id`** — trains a separate model per machine, flagging any `vibration_smoothed` value outside the 99% expected range.
+- **`minTrainingSize` (50)** — the minimum readings needed before the model starts detecting.
+- **`confidencePercentage` (99.0)** — a higher value widens that range, so fewer points break through: fewer false positives, but you may miss the subtle early signs of wear.
+- **`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`** — each reading is judged against all history up to that point, never future data.
+
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
 
 Query the results:
@@ -158,6 +187,12 @@ SELECT * FROM equipment_anomalies;
 | CNC-103 | 12:45:59  | 0.91      | true       | 0.019    | 0.008       | 0.032       |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
+
+---
+
+## Conclusion
+
+You built an end-to-end predictive maintenance pipeline entirely in Flink SQL: smoothed noisy vibration telemetry, then used `ML_DETECT_ANOMALIES` to train a per-machine ARIMA model that flags degradation before failure. Everything runs continuously and in real time — each materialized table reprocesses new telemetry the moment it arrives, so anomalies surface automatically and give you early warning to service equipment before it goes down.
 
 ---
 
