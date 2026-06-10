@@ -4,7 +4,7 @@ This lab builds a real-time anomaly detection pipeline for CNC machine telemetry
 
 <img src="./assets/lab1/lab1-architecture.png" alt="Architecture Diagram" style="max-width: 50%;" />
 
-Simulated sensor data (motor current, RPM, vibration) streams through three stages: raw telemetry from CNC machines → smoothed health features → per-machine anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
+Simulated sensor data (motor current, RPM, vibration) streams through three stages: raw telemetry from CNC machines → windowed health features → per-machine anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
 
 ---
 
@@ -60,7 +60,7 @@ uv run deploy
 
 ### 1. Understanding the Data
 
-The raw data pipeline is already set up — a Faker connector streams CNC machine telemetry into `cnc_machine_signals`. Explore it in the Flink SQL workspace:
+The raw data pipeline is already set up — a Faker connector streams CNC machine telemetry into `cnc_machine_signals`. Explore it in the [Flink SQL workspace](https://confluent.cloud/go/flink) (you'll need to pick your environment to get to the workspace):
 
 ```sql
 SELECT * FROM cnc_machine_signals;
@@ -81,40 +81,60 @@ Example event:
 }
 ```
 
+> [!NOTE]
+> These machines run motors and spindles at high RPM under load, so they're full of measurable signals:
+> - `motor_current` — how hard the motor is working
+> - `rpm` — spindle/motor rotational speed
+> - `voltage` — supply voltage
+> - `vibration_raw` — vibration on the bearings/spindle
+
 ---
 
 ### 2. Sensor Feature Transformation
 
-Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index. Run the following in the Flink SQL workspace:
+Before running anomaly detection, aggregate the raw vibration into fixed time windows and compute an efficiency index.
+
+**Why aggregate?** Raw vibration streams in many times per second and is noisy. Bucketing each machine's readings into 5-second **tumbling windows** turns that firehose into a few stable features per window: `vibration_avg` (the smoothed signal we run detection on), `vibration_peak` (the worst reading in the window — handy for gauging severity), and an averaged `efficiency_index`. This cancels the jitter and cuts the data rate, so the anomaly detector sees a clean, steady signal per machine instead of firing on every noisy reading. `window_time` is each window's timestamp, which we alias to `ts` and carry downstream as the event time.
+
+Run the following in the Flink SQL workspace:
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE machine_health_features AS
 SELECT
     machine_id,
-    ts,
-    vibration_raw,
-    -- Smoothing: Average of the last 10 rows
-    AVG(vibration_raw) OVER (
-        PARTITION BY machine_id
-        ORDER BY ts
-        ROWS BETWEEN 10 PRECEDING AND CURRENT ROW
-    ) AS vibration_smoothed,
-    (rpm / NULLIF(motor_current, 0)) AS efficiency_index
-FROM cnc_machine_signals;
+    window_time AS ts,
+    AVG(vibration_raw) AS vibration_avg,
+    MAX(vibration_raw) AS vibration_peak,
+    AVG(rpm / NULLIF(motor_current, 0)) AS efficiency_index
+FROM TUMBLE(TABLE cnc_machine_signals, DESCRIPTOR(ts), INTERVAL '5' SECOND)
+GROUP BY machine_id, window_start, window_end, window_time;
+```
+
+> [!TIP]
+> A **materialized table** combines a table definition with a continuous query — Flink keeps it updated automatically as new data arrives, so you query it like a normal table without managing the refresh. Benefits:
+> - **Always fresh** — results update continuously as new events stream in.
+> - **Logic evolution** — `CREATE OR ALTER` lets you change the query or schema in place; Flink migrates the pipeline for you, no manual offset handling.
+>
+> [Learn more](https://docs.confluent.io/cloud/current/flink/concepts/materialized-tables.html).
+
+Explore the output:
+
+```sql
+SELECT * FROM machine_health_features;
 ```
 
 ---
 
 ### 3. Detect Machine Anomalies
 
-Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags rows where smoothed vibration falls outside the predicted confidence interval.
+Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags windows where the average vibration falls outside the predicted confidence interval.
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE equipment_anomalies AS
 SELECT
     machine_id,
     ts,
-    vibration_smoothed,
+    vibration_avg,
     anomaly.is_anomaly,
     anomaly.forecast_value,
     anomaly.lower_bound,
@@ -123,15 +143,14 @@ FROM (
     SELECT
         machine_id,
         ts,
-        vibration_raw,
-        vibration_smoothed,
+        vibration_avg,
         ML_DETECT_ANOMALIES(
-            vibration_smoothed,
+            vibration_avg,
             ts,
             JSON_OBJECT(
                 'minTrainingSize'      VALUE 50,
                 'maxTrainingSize'      VALUE 300,
-                'confidencePercentage' VALUE 99.0
+                'confidencePercentage' VALUE 99.9
             )
         ) OVER (
             PARTITION BY machine_id
@@ -141,8 +160,13 @@ FROM (
     FROM machine_health_features
 )
 WHERE anomaly.is_anomaly = TRUE
-  AND vibration_smoothed > anomaly.upper_bound;
+  AND vibration_avg > anomaly.upper_bound;
 ```
+
+- **`PARTITION BY machine_id`** — trains a separate model per machine, flagging any `vibration_avg` value outside the 99% expected range.
+- **`minTrainingSize` (50)** — the minimum readings needed before the model starts detecting.
+- **`confidencePercentage` (99.9)** — a higher value widens that range, so fewer points break through: fewer false positives, but you may miss the subtle early signs of wear.
+- **`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`** — each reading is judged against all history up to that point, never future data.
 
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
 
@@ -158,6 +182,12 @@ SELECT * FROM equipment_anomalies;
 | CNC-103 | 12:45:59  | 0.91      | true       | 0.019    | 0.008       | 0.032       |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
+
+---
+
+## Conclusion
+
+You built an end-to-end predictive maintenance pipeline entirely in Flink SQL: aggregated noisy vibration telemetry into 5-second windows, then used `ML_DETECT_ANOMALIES` to train a per-machine ARIMA model that flags degradation before failure. Everything runs continuously and in real time — each materialized table reprocesses new telemetry the moment it arrives, so anomalies surface automatically and give you early warning to service equipment before it goes down.
 
 ---
 
