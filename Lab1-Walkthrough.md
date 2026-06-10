@@ -136,8 +136,11 @@ FROM (
     FROM machine_health_features
 )
 WHERE anomaly.is_anomaly = TRUE
-  AND vibration_avg > anomaly.upper_bound;
+  AND vibration_avg > anomaly.upper_bound
+  AND vibration_avg > 0.1;  -- severity floor: real bearing-wear vibration is ~30x the noise floor
 ```
+
+The severity floor mirrors real condition-monitoring practice: an alert threshold layered on top of statistical detection, so rare low-magnitude exceedances (e.g., right after model warmup) don't page anyone.
 
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
 
