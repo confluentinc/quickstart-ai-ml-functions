@@ -19,11 +19,7 @@ Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/con
 </tr>
 <tr>
 <td><a href="./Lab3-Walkthrough.md"><strong>Lab 3 – Network Capacity Forecasting</strong></a></td>
-<td>Real-time per-tower capacity forecasting using <code>ML_FORECAST</code> with per-tower ARIMA models to alert before network congestion impacts customers.</td>
-</tr>
-<tr>
-<td><strong>Lab 4 – Coming Soon</strong></td>
-<td> </td>
+<td>Real-time per-tower capacity forecasting using <code>ML_FORECAST</code> with per-tower ARIMA models to alert before network congestion impacts customers.<br><br><img src="./assets/lab3/lab3-architecture.png" alt="Lab 3 architecture diagram"></td>
 </tr>
 </table>
 
@@ -32,11 +28,11 @@ Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/con
 
 **Required accounts & credentials:**
 
-- [![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/?utm_campaign=tm.pmm_cd.q4fy25-quickstart-ai-ml-functions&utm_source=github&utm_medium=demo)
+[![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/?utm_campaign=tm.pmm_cd.q4fy25-quickstart-ai-ml-functions&utm_source=github&utm_medium=demo)
 
 **Required tools:**
 
-- **[Confluent CLI](https://docs.confluent.io/confluent-cli/current/overview.html)** - must be logged in
+- **[Confluent CLI](https://docs.confluent.io/confluent-cli/current/overview.html)**
 - **[Git](https://github.com/git/git)**
 - **[Terraform](https://github.com/hashicorp/terraform)**
 - **[uv](https://github.com/astral-sh/uv)**

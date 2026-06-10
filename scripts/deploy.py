@@ -63,7 +63,7 @@ def main() -> None:
     parser.add_argument(
         "lab",
         nargs="?",
-        choices=["lab1", "lab2", "lab3", "lab4"],
+        choices=["lab1", "lab2", "lab3"],
         help="Lab to deploy (e.g. 'lab2'). Omit to deploy all labs.",
     )
     args = parser.parse_args()
@@ -82,7 +82,7 @@ def main() -> None:
         # Extract values from .env (ensure cloud provider is lowercase)
         cloud = creds.get("TF_VAR_cloud_provider", "").lower()
         region = creds.get("TF_VAR_cloud_region", "")
-        envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
+        envs_to_deploy = ["core", "lab1", "lab2", "lab3"]
 
         # Build environment variables for Terraform
         env_vars = {
@@ -95,7 +95,7 @@ def main() -> None:
         print("✓ Credentials loaded from credentials.env")
         print(f"  Cloud: {cloud}")
         print(f"  Region: {region}")
-        print(f"  Deploying: {', '.join(envs_to_deploy)}")
+        print("  Deploying: lab1, lab2, lab3")
         print()
 
         # Write terraform.tfvars files
@@ -136,8 +136,8 @@ def main() -> None:
             envs_to_deploy = ["core", args.lab]
             print(f"Deploying: {args.lab} (specified on command line)")
         else:
-            envs_to_deploy = ["core", "lab1", "lab2", "lab3", "lab4"]
-            print("Deploying: all labs (default)")
+            envs_to_deploy = ["core", "lab1", "lab2", "lab3"]
+            print("Deploying: lab1, lab2, lab3 (default)")
 
         # Step 5: Prompt for required credentials
         print("\n--- Credential Configuration ---")

@@ -47,26 +47,26 @@ lab3_capacity_alerts  (actionable ops alerts, 6 partitions)
 
 ## Prerequisites
 
-**Required accounts:**
+**Required accounts & credentials:**
 
-- [![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/)
+[![Sign up for Confluent Cloud](https://img.shields.io/badge/Sign%20up%20for%20Confluent%20Cloud-007BFF?style=for-the-badge&logo=apachekafka&logoColor=white)](https://www.confluent.io/get-started/)
 
-**Required tools:**
+<details>
+<summary>Install the Prerequisities (Mac/Windows)</summary>
 
-**MacOS**
+**Mac:**
 
 ```bash
-brew install uv git python
-brew tap hashicorp/tap
-brew install hashicorp/tap/terraform
-brew install --cask confluent-cli
+brew install uv git python && brew tap hashicorp/tap && brew install hashicorp/tap/terraform && brew install --cask confluent-cli
 ```
 
-**Windows**
+**Windows:**
 
 ```powershell
 winget install astral-sh.uv Git.Git Hashicorp.Terraform ConfluentInc.Confluent-CLI Python.Python
 ```
+
+</details>
 
 ---
 
@@ -82,10 +82,14 @@ cd quickstart-ai-ml-functions
 **2. Deploy Lab 3:**
 
 ```bash
-# If already deployed skip to next step, else if not already deployed, destroy and redeploy
-uv run destroy
-uv run deploy lab3  # the `lab3` argument selects Lab 3 non-interactively
+uv run deploy
 ```
+
+> **Optional:** Register the project-scoped Confluent MCP server in Claude or Codex:
+>
+> ```bash
+> uv run setup-mcp
+> ```
 
 This provisions:
 
