@@ -4,7 +4,7 @@ This lab builds a real-time anomaly detection pipeline for CNC machine telemetry
 
 <img src="./assets/lab1/lab1-architecture.png" alt="Architecture Diagram" style="max-width: 50%;" />
 
-Simulated sensor data (motor current, RPM, vibration) streams through three stages: raw telemetry from CNC machines → smoothed health features → per-machine anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
+Simulated sensor data (motor current, RPM, vibration) streams through three stages: raw telemetry from CNC machines → windowed health features → per-machine anomaly detection. The goal is catching early signs of bearing wear or spindle failure before they cause downtime.
 
 ---
 
@@ -83,38 +83,34 @@ Example event:
 
 ---
 
-### 2. Sensor Feature Transformation
+### 2. Sensor Feature Engineering
 
-Before running anomaly detection, smooth the raw vibration signal and compute an efficiency index. Run the following in the Flink SQL workspace:
+Before running anomaly detection, aggregate the raw signals into 5-second tumbling windows per machine. `ML_DETECT_ANOMALIES` works best on an evenly spaced series with one value per timestamp, and tumbling windows produce exactly that — while also computing health features like average vibration, peak vibration, and an efficiency index. Run the following in the Flink SQL workspace:
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE machine_health_features AS
 SELECT
     machine_id,
-    ts,
-    vibration_raw,
-    -- Smoothing: Average of the last 10 rows
-    AVG(vibration_raw) OVER (
-        PARTITION BY machine_id
-        ORDER BY ts
-        ROWS BETWEEN 10 PRECEDING AND CURRENT ROW
-    ) AS vibration_smoothed,
-    (rpm / NULLIF(motor_current, 0)) AS efficiency_index
-FROM cnc_machine_signals;
+    window_time AS ts,
+    AVG(vibration_raw) AS vibration_avg,
+    MAX(vibration_raw) AS vibration_peak,
+    AVG(rpm / NULLIF(motor_current, 0)) AS efficiency_index
+FROM TUMBLE(TABLE cnc_machine_signals, DESCRIPTOR(ts), INTERVAL '5' SECOND)
+GROUP BY machine_id, window_start, window_end, window_time;
 ```
 
 ---
 
 ### 3. Detect Machine Anomalies
 
-Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags rows where smoothed vibration falls outside the predicted confidence interval.
+Run the following in the Flink SQL workspace. `ML_DETECT_ANOMALIES` trains an independent ARIMA model per machine and flags windows where average vibration falls outside the predicted confidence interval. Detection begins once a machine has accumulated 50 windows (about 4 minutes of data).
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE equipment_anomalies AS
 SELECT
     machine_id,
     ts,
-    vibration_smoothed,
+    vibration_avg,
     anomaly.is_anomaly,
     anomaly.forecast_value,
     anomaly.lower_bound,
@@ -123,15 +119,14 @@ FROM (
     SELECT
         machine_id,
         ts,
-        vibration_raw,
-        vibration_smoothed,
+        vibration_avg,
         ML_DETECT_ANOMALIES(
-            vibration_smoothed,
+            vibration_avg,
             ts,
             JSON_OBJECT(
                 'minTrainingSize'      VALUE 50,
                 'maxTrainingSize'      VALUE 300,
-                'confidencePercentage' VALUE 99.0
+                'confidencePercentage' VALUE 99.9
             )
         ) OVER (
             PARTITION BY machine_id
@@ -141,7 +136,7 @@ FROM (
     FROM machine_health_features
 )
 WHERE anomaly.is_anomaly = TRUE
-  AND vibration_smoothed > anomaly.upper_bound;
+  AND vibration_avg > anomaly.upper_bound;
 ```
 
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
@@ -154,8 +149,8 @@ SELECT * FROM equipment_anomalies;
 
 | Machine | Timestamp | Vibration | Is Anomaly | Forecast | Lower Bound | Upper Bound |
 | ------- | --------- | --------- | ---------- | -------- | ----------- | ----------- |
-| CNC-101 | 12:41:02  | 0.87      | true       | 0.021    | 0.010       | 0.035       |
-| CNC-103 | 12:45:59  | 0.91      | true       | 0.019    | 0.008       | 0.032       |
+| CNC-101 | 12:41:54  | 0.90      | true       | 0.10     | -0.65       | 0.85        |
+| CNC-103 | 12:45:54  | 0.89      | true       | 0.09     | -0.64       | 0.84        |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 
