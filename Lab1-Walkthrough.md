@@ -90,11 +90,11 @@ Example event:
 
 ---
 
-### 2. Sensor Feature Transformation
+### 2. Sensor Feature Engineering
 
 Before running anomaly detection, aggregate the raw vibration into fixed time windows and compute an efficiency index.
 
-**Why aggregate?** Raw vibration streams in many times per second and is noisy. Bucketing each machine's readings into 5-second **tumbling windows** turns that firehose into a few stable features per window: `vibration_avg` (the smoothed signal we run detection on), `vibration_peak` (the worst reading in the window — handy for gauging severity), and an averaged `efficiency_index`. This cancels the jitter and cuts the data rate, so the anomaly detector sees a clean, steady signal per machine instead of firing on every noisy reading. `window_time` is each window's timestamp, which we alias to `ts` and carry downstream as the event time.
+**Why aggregate?** Raw vibration streams in many times per second and is noisy. Bucketing each machine's readings into 5-second **tumbling windows** turns that firehose into a few stable features per window: `vibration_avg` (the smoothed signal we run detection on), `vibration_peak` (the worst reading in the window — handy for gauging severity), and an averaged `efficiency_index`. This cancels the jitter and cuts the data rate — and because tumbling windows don't overlap, they produce exactly what `ML_DETECT_ANOMALIES` works best on: an evenly spaced series with one value per timestamp per machine. `window_time` is each window's timestamp, which we alias to `ts` and carry downstream as the event time.
 
 Run the following in the Flink SQL workspace:
 
@@ -160,13 +160,15 @@ FROM (
     FROM machine_health_features
 )
 WHERE anomaly.is_anomaly = TRUE
-  AND vibration_avg > anomaly.upper_bound;
+  AND vibration_avg > anomaly.upper_bound
+  AND vibration_avg > 0.1;  -- severity floor: real bearing-wear vibration is ~30x the noise floor
 ```
 
-- **`PARTITION BY machine_id`** — trains a separate model per machine, flagging any `vibration_avg` value outside the 99% expected range.
-- **`minTrainingSize` (50)** — the minimum readings needed before the model starts detecting.
+- **`PARTITION BY machine_id`** — trains a separate model per machine, flagging any `vibration_avg` value outside the expected range.
+- **`minTrainingSize` (50)** — the minimum readings needed before the model starts detecting: about 4 minutes of 5-second windows per machine.
 - **`confidencePercentage` (99.9)** — a higher value widens that range, so fewer points break through: fewer false positives, but you may miss the subtle early signs of wear.
 - **`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`** — each reading is judged against all history up to that point, never future data.
+- **`vibration_avg > 0.1` severity floor** — mirrors real condition-monitoring practice: an alert threshold layered on top of statistical detection, so rare low-magnitude exceedances (e.g., right after model warmup) don't page anyone.
 
 ![Anomaly Detection](./assets/lab1/lab1-anomaly-chart.png)
 
@@ -178,8 +180,8 @@ SELECT * FROM equipment_anomalies;
 
 | Machine | Timestamp | Vibration | Is Anomaly | Forecast | Lower Bound | Upper Bound |
 | ------- | --------- | --------- | ---------- | -------- | ----------- | ----------- |
-| CNC-101 | 12:41:02  | 0.87      | true       | 0.021    | 0.010       | 0.035       |
-| CNC-103 | 12:45:59  | 0.91      | true       | 0.019    | 0.008       | 0.032       |
+| CNC-101 | 12:41:54  | 0.90      | true       | 0.10     | -0.65       | 0.85        |
+| CNC-103 | 12:45:54  | 0.89      | true       | 0.09     | -0.64       | 0.84        |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 

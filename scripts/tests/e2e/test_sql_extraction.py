@@ -21,13 +21,17 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 @pytest.mark.parametrize(
     "walkthrough,expected_tables",
     [
-        ("Lab1-Walkthrough.md", ["equipment_anomalies"]),
+        ("Lab1-Walkthrough.md", ["machine_health_features", "equipment_anomalies"]),
         ("Lab2-Walkthrough.md", ["payments_flagged", "payments_flagged_flat"]),
         ("Lab3-Walkthrough.md", ["lab3_tower_agg", "lab3_forecasts", "lab3_capacity_alerts"]),
     ],
 )
 def test_walkthrough_yields_expected_tables(walkthrough: str, expected_tables: list[str]) -> None:
-    """Each walkthrough has the expected set of CREATE statements for its pipeline."""
+    """Each walkthrough has exactly the expected CREATE statements for its pipeline.
+
+    Exact equality (not subset) so that an accidental revert that re-adds or
+    drops a pipeline stage fails CI.
+    """
     blocks = extract_sql_blocks(PROJECT_ROOT / walkthrough)
     pipeline = [b for b in blocks if is_executable_pipeline_sql(b["sql"])]
 
@@ -37,8 +41,9 @@ def test_walkthrough_yields_expected_tables(walkthrough: str, expected_tables: l
         if obj:
             created.append(obj[1])
 
-    for table in expected_tables:
-        assert table in created, f"{walkthrough}: expected to find CREATE for `{table}`, got {created}"
+    assert created == expected_tables, (
+        f"{walkthrough}: expected pipeline to create exactly {expected_tables}, got {created}"
+    )
 
 
 def test_lab2_challenge_block_is_skipped() -> None:
