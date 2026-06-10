@@ -137,7 +137,6 @@ SELECT
     vibration_avg,
     anomaly.is_anomaly,
     anomaly.forecast_value,
-    anomaly.lower_bound,
     anomaly.upper_bound
 FROM (
     SELECT
@@ -178,10 +177,10 @@ Query the results:
 SELECT * FROM equipment_anomalies;
 ```
 
-| Machine | Timestamp | Vibration | Is Anomaly | Forecast | Lower Bound | Upper Bound |
-| ------- | --------- | --------- | ---------- | -------- | ----------- | ----------- |
-| CNC-101 | 12:41:54  | 0.90      | true       | 0.10     | -0.65       | 0.85        |
-| CNC-103 | 12:45:54  | 0.89      | true       | 0.09     | -0.64       | 0.84        |
+| Machine | Timestamp | Vibration | Is Anomaly | Forecast | Upper Bound |
+| ------- | --------- | --------- | ---------- | -------- | ----------- |
+| CNC-101 | 12:41:54  | 0.90      | true       | 0.10     | 0.85        |
+| CNC-103 | 12:45:54  | 0.89      | true       | 0.09     | 0.84        |
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 
