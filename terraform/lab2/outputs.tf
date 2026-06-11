@@ -7,7 +7,7 @@ output "confluent_kafka_cluster_id" {
 output "confluent_flink_compute_pool_id" {
   value = data.terraform_remote_state.core.outputs.confluent_flink_compute_pool_id
 }
-output "payments_statement_name" {
-  description = "Flink statement name for the payments faker table"
-  value       = confluent_flink_statement.create_payments.statement_name
+output "transactions_statement_name" {
+  description = "Flink statement name for the transactions faker table"
+  value       = confluent_flink_statement.create_transactions.statement_name
 }

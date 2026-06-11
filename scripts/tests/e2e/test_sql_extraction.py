@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
     "walkthrough,expected_tables",
     [
         ("Lab1-Walkthrough.md", ["machine_health_features", "equipment_anomalies"]),
-        ("Lab2-Walkthrough.md", ["payments_flagged", "payments_flagged_flat"]),
+        ("Lab2-Walkthrough.md", ["flagged_windows", "fraud_transactions"]),
         ("Lab3-Walkthrough.md", ["lab3_tower_agg", "lab3_forecasts", "lab3_capacity_alerts"]),
     ],
 )

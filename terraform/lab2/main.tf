@@ -4,65 +4,73 @@ data "terraform_remote_state" "core" {
 }
 
 locals {
-  environment_id     = data.terraform_remote_state.core.outputs.confluent_environment_id
-  compute_pool_id    = data.terraform_remote_state.core.outputs.confluent_flink_compute_pool_id
-  organization_id    = data.terraform_remote_state.core.outputs.confluent_organization_id
-  service_account_id = data.terraform_remote_state.core.outputs.app_manager_service_account_id
+  environment_id      = data.terraform_remote_state.core.outputs.confluent_environment_id
+  compute_pool_id     = data.terraform_remote_state.core.outputs.confluent_flink_compute_pool_id
+  organization_id     = data.terraform_remote_state.core.outputs.confluent_organization_id
+  service_account_id  = data.terraform_remote_state.core.outputs.app_manager_service_account_id
   flink_rest_endpoint = data.terraform_remote_state.core.outputs.confluent_flink_rest_endpoint
-  flink_api_key      = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
-  flink_api_secret   = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
-  random_id          = data.terraform_remote_state.core.outputs.random_id
+  flink_api_key       = data.terraform_remote_state.core.outputs.app_manager_flink_api_key
+  flink_api_secret    = data.terraform_remote_state.core.outputs.app_manager_flink_api_secret
+  random_id           = data.terraform_remote_state.core.outputs.random_id
 
   flink_properties = {
     "sql.current-catalog"  = data.terraform_remote_state.core.outputs.confluent_environment_display_name
     "sql.current-database" = data.terraform_remote_state.core.outputs.confluent_kafka_cluster_display_name
   }
+
+  # 50 fixed customer IDs so each customer accumulates history quickly.
+  customer_options = join(",", [for i in range(1, 51) : format("''CUST-%04d''", i)])
+
+  # Normal amounts (10 values, $18-$480) repeated 600x, plus 8 varied "spike"
+  # amounts ($1,250-$8,895, deliberately non-round) appearing once each => ~0.13%
+  # of transactions are an anomalous spike. Varying the spike size means the demo
+  # surfaces a realistic spread of fraudulent amounts rather than one fixed value.
+  # Spikes are kept rare (~one per customer per ~13 min) so a spike doesn't linger
+  # in the model's training window long enough to inflate its bounds and mask the
+  # next spike. The smallest spike ($1,250) still sits well above the normal $480
+  # ceiling, so a matured per-customer model flags it.
+  normal_amounts = ["18.50", "42.00", "75.25", "120.00", "165.40", "210.75", "280.00", "340.90", "410.50", "480.00"]
+  spike_amounts  = ["1250.75", "2480.90", "3640.15", "4510.75", "5925.40", "6840.20", "7720.50", "8895.30"]
+  amount_options = join(",", [for v in concat(flatten([for i in range(600) : local.normal_amounts]), local.spike_amounts) : "''${v}''"])
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Flink DDL: payments (faker data generator)
+# Flink DDL: transactions_gen (faker data generator)
 #
-# Streams synthetic payment events using the Flink faker connector.
-# - 50 fixed customer IDs so each customer accumulates history quickly
-# - amount: 191 normal values ($12-$110) + 1 anomalous spike ($8,750) ~0.5%
+# Generates synthetic card transactions with the Flink faker connector. The
+# faker connector is virtual: every statement that reads it generates its own
+# independent random stream, so we persist it once into the real `transactions`
+# table and all walkthrough SQL reads from that one consistent Kafka-backed
+# stream (same pattern as Lab 1's machine_sensor_raw -> cnc_machine_signals).
+#
+# - amount: normal values ($18-$480) plus ~0.13% varied "spike" amounts
+#   ($1,250-$8,895) — the fraud signal this lab detects
 # - transaction_ts declared as event-time attribute via WATERMARK
 # ─────────────────────────────────────────────────────────────────────────────
-resource "confluent_flink_statement" "create_payments" {
+resource "confluent_flink_statement" "create_transactions_gen" {
   organization { id = local.organization_id }
   environment  { id = local.environment_id }
   compute_pool { id = local.compute_pool_id }
   principal    { id = local.service_account_id }
 
-  statement_name = "lab2-create-payments-${local.random_id}"
+  statement_name = "lab2-create-transactions-gen-${local.random_id}"
 
   statement = <<-SQL
-    CREATE TABLE IF NOT EXISTS `payments` (
-      `payment_id`        VARCHAR(2147483647) NOT NULL,
-      `customer_id`       VARCHAR(2147483647) NOT NULL,
-      `merchant_name`     VARCHAR(2147483647) NOT NULL,
-      `merchant_category` VARCHAR(2147483647) NOT NULL,
-      `amount`            DOUBLE              NOT NULL,
-      `payment_method`    VARCHAR(2147483647) NOT NULL,
-      `card_type`         VARCHAR(2147483647) NOT NULL,
-      `channel`           VARCHAR(2147483647) NOT NULL,
-      `transaction_type`  VARCHAR(2147483647) NOT NULL,
-      `country_code`      VARCHAR(2147483647) NOT NULL,
-      `transaction_ts`    TIMESTAMP(3)        NOT NULL,
+    CREATE TABLE IF NOT EXISTS `transactions_gen` (
+      `transaction_id`  VARCHAR(2147483647) NOT NULL,
+      `customer_id`     VARCHAR(2147483647) NOT NULL,
+      `merchant`        VARCHAR(2147483647) NOT NULL,
+      `amount`          DOUBLE              NOT NULL,
+      `transaction_ts`  TIMESTAMP(3)        NOT NULL,
       WATERMARK FOR `transaction_ts` AS `transaction_ts` - INTERVAL '5' SECOND
     ) WITH (
       'connector'       = 'faker',
-      'rows-per-second' = '10',
-      'fields.payment_id.expression'        = '#{Internet.uuid}',
-      'fields.customer_id.expression'       = '#{Options.option ''CUST-0001'',''CUST-0002'',''CUST-0003'',''CUST-0004'',''CUST-0005'',''CUST-0006'',''CUST-0007'',''CUST-0008'',''CUST-0009'',''CUST-0010'',''CUST-0011'',''CUST-0012'',''CUST-0013'',''CUST-0014'',''CUST-0015'',''CUST-0016'',''CUST-0017'',''CUST-0018'',''CUST-0019'',''CUST-0020'',''CUST-0021'',''CUST-0022'',''CUST-0023'',''CUST-0024'',''CUST-0025'',''CUST-0026'',''CUST-0027'',''CUST-0028'',''CUST-0029'',''CUST-0030'',''CUST-0031'',''CUST-0032'',''CUST-0033'',''CUST-0034'',''CUST-0035'',''CUST-0036'',''CUST-0037'',''CUST-0038'',''CUST-0039'',''CUST-0040'',''CUST-0041'',''CUST-0042'',''CUST-0043'',''CUST-0044'',''CUST-0045'',''CUST-0046'',''CUST-0047'',''CUST-0048'',''CUST-0049'',''CUST-0050''}',
-      'fields.merchant_name.expression'     = '#{Company.name}',
-      'fields.merchant_category.expression' = '#{Options.option ''GROCERY'',''GROCERY'',''GROCERY'',''RESTAURANT'',''RESTAURANT'',''ELECTRONICS'',''TRAVEL'',''OTHER''}',
-      'fields.amount.expression'            = '#{Options.option ''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''12.50'',''23.75'',''34.90'',''45.20'',''56.40'',''67.80'',''78.10'',''89.99'',''95.50'',''110.75'',''8750.00''}',
-      'fields.payment_method.expression'    = '#{Options.option ''CREDIT_CARD'',''CREDIT_CARD'',''CREDIT_CARD'',''CREDIT_CARD'',''CREDIT_CARD'',''CREDIT_CARD'',''DEBIT_CARD'',''DEBIT_CARD'',''DEBIT_CARD'',''WIRE_TRANSFER''}',
-      'fields.card_type.expression'         = '#{Options.option ''VISA'',''VISA'',''VISA'',''MASTERCARD'',''MASTERCARD'',''AMEX'',''DISCOVER''}',
-      'fields.channel.expression'           = '#{Options.option ''IN_STORE'',''IN_STORE'',''IN_STORE'',''IN_STORE'',''ONLINE'',''ONLINE'',''MOBILE_APP'',''ATM''}',
-      'fields.transaction_type.expression'  = '#{Options.option ''PURCHASE'',''PURCHASE'',''PURCHASE'',''PURCHASE'',''PURCHASE'',''PURCHASE'',''PURCHASE'',''PURCHASE'',''REFUND'',''CASH_ADVANCE''}',
-      'fields.country_code.expression'      = '#{Options.option ''US'',''US'',''US'',''GB''}',
-      'fields.transaction_ts.expression'    = '#{date.past ''5'',''SECONDS''}'
+      'rows-per-second' = '50',
+      'fields.transaction_id.expression' = '#{Internet.uuid}',
+      'fields.customer_id.expression'    = '#{Options.option ${local.customer_options}}',
+      'fields.merchant.expression'       = '#{Company.name}',
+      'fields.amount.expression'         = '#{Options.option ${local.amount_options}}',
+      'fields.transaction_ts.expression' = '#{date.past ''5'',''SECONDS''}'
     );
   SQL
 
@@ -72,4 +80,77 @@ resource "confluent_flink_statement" "create_payments" {
     key    = local.flink_api_key
     secret = local.flink_api_secret
   }
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flink DDL: transactions (real Kafka-backed table)
+#
+# The walkthrough SQL reads from this table so every downstream statement sees
+# the same stream of events.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "confluent_flink_statement" "create_transactions" {
+  organization { id = local.organization_id }
+  environment  { id = local.environment_id }
+  compute_pool { id = local.compute_pool_id }
+  principal    { id = local.service_account_id }
+
+  statement_name = "lab2-create-transactions-${local.random_id}"
+
+  statement = <<-SQL
+    CREATE TABLE IF NOT EXISTS `transactions` (
+      `transaction_id`  VARCHAR(2147483647) NOT NULL,
+      `customer_id`     VARCHAR(2147483647) NOT NULL,
+      `merchant`        VARCHAR(2147483647) NOT NULL,
+      `amount`          DOUBLE              NOT NULL,
+      `transaction_ts`  TIMESTAMP(3)        NOT NULL,
+      WATERMARK FOR `transaction_ts` AS `transaction_ts` - INTERVAL '5' SECOND
+    );
+  SQL
+
+  properties    = local.flink_properties
+  rest_endpoint = local.flink_rest_endpoint
+  credentials {
+    key    = local.flink_api_key
+    secret = local.flink_api_secret
+  }
+
+  lifecycle {
+    prevent_destroy = false
+  }
+
+  depends_on = [confluent_flink_statement.create_transactions_gen]
+}
+
+# Continuously persist the generated events into the real transactions table.
+resource "confluent_flink_statement" "transactions_insert" {
+  organization { id = local.organization_id }
+  environment  { id = local.environment_id }
+  compute_pool { id = local.compute_pool_id }
+  principal    { id = local.service_account_id }
+
+  statement_name = "lab2-transactions-insert-${local.random_id}"
+
+  statement = <<-SQL
+    INSERT INTO `transactions` SELECT * FROM `transactions_gen`;
+  SQL
+
+  properties    = local.flink_properties
+  rest_endpoint = local.flink_rest_endpoint
+  credentials {
+    key    = local.flink_api_key
+    secret = local.flink_api_secret
+  }
+
+  lifecycle {
+    prevent_destroy = false
+  }
+
+  depends_on = [
+    confluent_flink_statement.create_transactions_gen,
+    confluent_flink_statement.create_transactions,
+  ]
 }
