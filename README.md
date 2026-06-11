@@ -15,7 +15,7 @@ Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/con
 </tr>
 <tr>
 <td><a href="./Lab2-Walkthrough.md"><strong>Lab 2 – Payment Fraud Detection</strong></a></td>
-<td>Real-time fraud detection on a synthetic payments stream using <code>ML_DETECT_ANOMALIES</code> with ARIMA to flag spikes in average transaction size and unusual cash advance patterns.<br><br><img src="./assets/lab2/Lab2-architecture.png" alt="Lab 2 architecture diagram"></td>
+<td>Real-time fraud detection on a synthetic card-transaction stream using <code>ML_DETECT_ANOMALIES</code> with per-customer ARIMA models to flag spike transactions the moment they exceed each customer's normal spending ceiling.<br><br><img src="./assets/lab2/Lab2-architecture.png" alt="Lab 2 architecture diagram"></td>
 </tr>
 <tr>
 <td><a href="./Lab3-Walkthrough.md"><strong>Lab 3 – Network Capacity Forecasting</strong></a></td>
