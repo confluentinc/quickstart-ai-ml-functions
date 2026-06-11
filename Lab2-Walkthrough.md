@@ -99,11 +99,6 @@ pipeline:
 1. **`flagged_windows`** — aggregate into 15s windows, score with ARIMA, keep only anomalous windows
 2. **`fraud_transactions`** — join flagged windows back to `transactions` to recover the offending payment
 
-> **Why `MAX(amount)` per window?** Fraud here is a single oversized transaction. Averaging the window dilutes the
-> signal: one `$1,250` charge among ~15 normal ones averages to only ~`$145` and can slip below the model's upper
-> bound. Tracking the window's *largest* transaction means the model learns each customer's normal spending
-> **ceiling** (~`$480`) — any single spike that breaks through it stands out immediately.
-
 ### 1. Create the `flagged_windows` Table
 
 Aggregate each customer's transactions into 15-second tumbling windows, run `ML_DETECT_ANOMALIES` on the windowed
@@ -176,11 +171,6 @@ WHERE CAST(max_amount AS DOUBLE) > anom.upper_bound
 > `minTrainingSize: 10` means each model needs 10 windows (~2.5 minutes) before it starts scoring, and
 > `maxTrainingSize: 24` keeps training data fresh so a past spike ages out (~6 minutes) instead of skewing
 > the model's bounds. Each ARIMA model trains independently per customer — 50 concurrent models from one statement.
->
-> The `max_amount > 500` **severity floor** guards against the first couple minutes of scoring, when a model trained
-> on only ~10 points can emit unstable bounds. It costs nothing: an all-normal window's largest transaction never
-> exceeds `$480`, while every spike is `> $1,250` — so the floor silences early-model noise without ever masking
-> real fraud. (Lab 1 uses the same pattern with its vibration floor.)
 >
 > Expect a delay of **~3 minutes** before the first anomalies appear.
 
