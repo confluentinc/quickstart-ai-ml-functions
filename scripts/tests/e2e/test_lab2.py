@@ -2,7 +2,12 @@
 
 Parses SQL from `Lab2-Walkthrough.md` and runs it sequentially. Asserts:
   - Each CREATE statement results in a Flink catalog object that DESCRIBE confirms
-  - The `fraud_transactions` topic emits >=1 record with a spike amount (> $500).
+  - Thesis: the `fraud_transactions` topic emits a SMALL_SPENDER fraud row in the
+    100 < amount < 500 band — a genuine spike a global dollar threshold would miss,
+    flagged only because it broke that customer's own model bound.
+  - Converse: no ordinary purchase is flagged (no row inside any tier's normal band),
+    so detection has not collapsed back into a global threshold. Together these two
+    are the proof the detection is genuinely per-customer.
 
 The Lab 2 challenge block in the walkthrough is fenced as ```sql no-parse``` so
 the extractor skips it (it contains `<YOUR_LOGIC>` placeholders).
@@ -56,21 +61,40 @@ class TestLab2:
             flink.ensure_statement(stmt, sql, timeout=300)
             submitted.append(stmt)
 
-        # Headline assertion: fraud_transactions emits confirmed-fraud rows.
-        # ARIMA needs minTrainingSize=10 + per-customer warm-up — expect ~3 min
-        # before the first spike appears in fraud_transactions.
+        # Headline assertion (thesis): fraud_transactions emits a SMALL_SPENDER spike at a
+        # sub-$500 amount. SMALL_SPENDER normal tops out ~$48 and their fraud spikes are
+        # ~$125-$890, so a flagged row with 100 < amount < 500 is a genuine spike a global
+        # "IF amount > X" rule would have to ignore to avoid flooding on BIG_SPENDERs'
+        # routine purchases. Catching it is only possible because each customer has its own
+        # model — this is the proof the lab is per-customer. ARIMA needs minTrainingSize=10
+        # + per-customer warm-up, so allow generous time.
+        def _is_small_spike(r: dict[str, Any]) -> bool:
+            return r.get("customer_segment") == "SMALL_SPENDER" and 100 < r.get("amount", 0) < 500
+
         rows = poll_until(
-            getter=partial(poll_topic, kafka_creds, "fraud_transactions", 1, 60),
-            condition=lambda msgs: len(msgs) >= 1,
-            timeout=600,
-            interval=30,
-            description="fraud_transactions has >= 1 record",
+            getter=partial(poll_topic, kafka_creds, "fraud_transactions", 60, 45),
+            condition=lambda msgs: any(_is_small_spike(r) for r in msgs),
+            timeout=900,
+            interval=20,
+            description="fraud_transactions has a sub-$500 SMALL_SPENDER fraud row",
         )
-        # Every row must be a genuine spike: amount > $500 severity floor
-        low_amounts = [r for r in rows if r.get("amount", 0) <= 500]
-        assert not low_amounts, (
-            "Expected all fraud_transactions records to have amount > $500 (severity floor). "
-            f"Found low-amount record: {low_amounts[0]}"
+        small_spike = [r for r in rows if _is_small_spike(r)]
+        assert small_spike, (
+            "Expected a fraud_transactions record with 100 < amount < 500 (a SMALL_SPENDER "
+            "spike caught by its own model — impossible with a single global threshold). "
+            f"Got {len(rows)} rows, none in that band: {rows[:3]}"
+        )
+
+        # Converse assertion: no ordinary purchase is flagged. Each tier's normal ceiling
+        # sits well below its fraud spikes (SMALL ~$48 vs ~$125+, MAINSTREAM ~$480 vs
+        # ~$1,250+, BIG ~$4,800 vs ~$12,500+). A flagged row inside a tier's normal band
+        # would mean detection collapsed back to a global dollar threshold — the exact
+        # failure this per-customer design exists to avoid.
+        normal_caps = {"SMALL_SPENDER": 100, "MAINSTREAM": 1000, "BIG_SPENDER": 5000}
+        normal_fps = [r for r in rows if r.get("amount", 0) < normal_caps.get(str(r.get("customer_segment", "")), 0)]
+        assert not normal_fps, (
+            "fraud_transactions flagged ordinary (non-fraud) purchases inside a tier's normal "
+            f"band — per-customer detection is not working: {normal_fps[:5]}"
         )
 
         flink.verify_no_failed(submitted)
