@@ -1,11 +1,8 @@
 # Lab 2: Real-Time Payment Fraud Detection with `ML_DETECT_ANOMALIES`
 
-This lab demonstrates a real-time payment fraud detection pipeline using the built-in `ML_DETECT_ANOMALIES` function.
+Fraud isn't "a big dollar amount." A `$400` charge is obvious fraud for someone who never spends more than `$50`, and a rounding error for a high-roller who routinely drops `$4,800`. The same number means opposite things depending on who spent it.
 
-The twist: fraud isn't "a big dollar amount." A `$400` charge is obvious fraud for someone whose purchases never
-top `$50`, while it's a rounding error for a high-roller who routinely spends `$4,800`. So we run **an independent
-ARIMA model per customer** — each one learns that customer's *own* normal spending and flags what's anomalous **for
-them**. No global threshold can do this.
+The solution: **one independent ARIMA model per customer**. Each model learns that customer's own spending pattern and flags what's anomalous for them specifically. No global threshold comes close to this.
 
 [Learn more about the built-in anomaly detection functions on Confluent Cloud for Apache Flink.](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
 
@@ -57,10 +54,7 @@ uv run deploy
 > uv run setup-mcp
 > ```
 
-This provisions the core Confluent Cloud environment, along with the `transactions` table — a real Kafka-backed stream
-fed by a [Flink faker](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) pipeline
-that generates ~50 synthetic card transactions per second across 50 customers, split into three **spending tiers**
-so no two customers look alike.
+This provisions the core Confluent Cloud environment and the `transactions` table: a real Kafka-backed stream fed by a [Flink faker](https://docs.confluent.io/cloud/current/flink/how-to-guides/custom-sample-data.html) pipeline generating ~50 synthetic card transactions per second across 50 customers, split into three **spending tiers** so no two customers look alike.
 
 <img src="./assets/lab2/Lab2-architecture.png" alt="Lab 2 Architecture" style="max-width: 50%;" />
 
@@ -68,12 +62,9 @@ so no two customers look alike.
 
 ### Data Generation
 
-The `transactions` topic streams ~50 records per second across 50 customers. Each row is a card transaction:
-a `transaction_id`, the `customer_id`, a `customer_segment` label, the `merchant`, the `amount`, and a
-`transaction_ts`.
+The `transactions` topic streams ~50 records per second across 50 customers. Each row is a card transaction: a `transaction_id`, the `customer_id`, a `customer_segment` label, the `merchant`, the `amount`, and a `transaction_ts`.
 
-The 50 customers fall into three spending tiers, so the *same dollar amount* means very different things depending on
-who spent it:
+The 50 customers split into three spending tiers. The *same dollar amount* means different things depending on which tier you're looking at:
 
 | `customer_segment` | Customers | Normal amounts | Fraud spikes (~0.13%) |
 | ------------------ | ---------------- | ----------------- | --------------------- |
@@ -83,9 +74,7 @@ who spent it:
 
 > [!NOTE]
 >
-> `customer_segment` is a label **for you**, not for the model. `ML_DETECT_ANOMALIES` never sees it — each model is
-> keyed only on `customer_id` and learns that customer's normal from their own transaction history. The segment is
-> here purely so the results are easy to read.
+> `customer_segment` is a label **for you**, not for the model. `ML_DETECT_ANOMALIES` never sees it; each model keys only on `customer_id` and learns that customer's normal from their own transaction history. The segment is here purely so the results are easy to read.
 
 To explore the source data, open a SQL workspace in the [Confluent Cloud Flink UI](https://confluent.cloud/go/flink),
 select your environment and compute pool, and run the following query.
@@ -102,8 +91,7 @@ Example output:
 | 9bd56699-…     | CUST-0031   | MAINSTREAM       | Bergstrom Inc    | 460.00  | 2026-06-10 12:39:01.000 |
 | c1220339-…     | CUST-0043   | BIG_SPENDER      | Kuhic and Sons   | 4452.00 | 2026-06-10 12:39:02.000 |
 
-**See how different the customers are.** Run this to compare each customer's spending range — notice a `SMALL_SPENDER`
-lives entirely under `$50`, while a `BIG_SPENDER`'s *typical* purchase dwarfs the other tier's largest:
+**See how different the customers are.** Run this to compare spending ranges. A `SMALL_SPENDER` lives entirely under `$50`; a `BIG_SPENDER`'s *typical* purchase dwarfs the other tier's largest:
 
 ```sql no-parse
 SELECT
@@ -113,11 +101,10 @@ SELECT
   ROUND(MAX(amount), 2) AS max_amount,
   ROUND(AVG(amount), 2) AS avg_amount
 FROM transactions
-GROUP BY customer_id, customer_segment
-ORDER BY customer_id;
+GROUP BY customer_id, customer_segment;
 ```
 
-Example output (note `CUST-0001`'s entire range fits inside a single one of `CUST-0050`'s ordinary purchases):
+Example output (rows arrive in emission order; the contrast between tiers is what matters, not the order):
 
 | customer_id | customer_segment | min_amount | max_amount | avg_amount |
 | ----------- | ---------------- | ---------- | ---------- | ---------- |
@@ -127,29 +114,19 @@ Example output (note `CUST-0001`'s entire range fits inside a single one of `CUS
 
 ### The Approach
 
-ARIMA — the model behind `ML_DETECT_ANOMALIES` — expects an **evenly spaced time series**: one value per timestamp
-per model. Raw transactions don't look like that (each customer's payments arrive at irregular moments), so feeding
-raw events directly to the model produces noisy bounds and false alarms on ordinary transactions.
+ARIMA (the model behind `ML_DETECT_ANOMALIES`) expects an **evenly spaced time series**: one value per timestamp per model. Raw transactions don't look like that, since each customer's payments arrive at irregular moments. Feeding raw events directly produces noisy bounds and false alarms on ordinary purchases.
 
-The fix is a standard streaming pattern, built as **three small statements that each do one thing**:
+The fix is a standard streaming pattern: three small statements that each do one thing.
 
-1. **`transaction_features`** (a view) — aggregate each customer's transactions into evenly spaced **15-second tumbling
-   windows**, taking the **largest** transaction in each window (`MAX(amount)`)
-2. **`flagged_windows`** (a materialized table) — run one `ML_DETECT_ANOMALIES` model per customer over that windowed
-   series and keep only the windows the model flags
-3. **`fraud_transactions`** (a materialized table) — join the flagged windows back to `transactions` to recover the
-   actual offending payment
+1. **`transaction_features`** (a view): aggregate each customer's transactions into evenly spaced **15-second tumbling windows**, taking the **largest** transaction in each window (`MAX(amount)`)
+2. **`flagged_windows`** (a materialized table): run one `ML_DETECT_ANOMALIES` model per customer over that windowed series and keep only the windows the model flags
+3. **`fraud_transactions`** (a materialized table): join the flagged windows back to `transactions` to recover the actual offending payment
 
-> **Why `MAX(amount)` per window?** Fraud here is a single oversized transaction. Averaging the window dilutes the
-> signal: one spike among ~15 normal charges barely moves the mean and can slip below the model's upper bound.
-> Tracking the window's *largest* transaction means the model learns each customer's normal spending **ceiling** —
-> any single charge that breaks through it stands out immediately.
+> **Why `MAX(amount)` per window?** Fraud here is a single oversized transaction. Averaging the window dilutes the signal: one spike among ~15 normal charges barely moves the mean and can slip below the model's upper bound. Tracking the window's *largest* transaction means the model learns each customer's normal spending **ceiling**. Any charge that breaks through it stands out immediately.
 
 ### 1. Create the `transaction_features` View
 
-A [view](https://docs.confluent.io/cloud/current/flink/reference/statements/create-view.html) is just a saved query —
-it adds no data-bearing topic. This one turns the raw stream into one evenly spaced row per customer per 15-second
-window, carrying that window's largest transaction (and the customer's segment label).
+A [view](https://docs.confluent.io/cloud/current/flink/reference/statements/create-view.html) is just a saved query; it creates no backing Kafka topic. This one turns the raw stream into one evenly spaced row per customer per 15-second window, carrying that window's largest transaction and the customer's segment label.
 
 ```sql
 CREATE VIEW IF NOT EXISTS transaction_features AS
@@ -166,10 +143,7 @@ GROUP BY customer_id, customer_segment, window_start, window_end, window_time;
 
 ### 2. Create the `flagged_windows` Table
 
-Now run the model. `ML_DETECT_ANOMALIES` trains **one ARIMA model per customer** (`PARTITION BY customer_id`) over the
-windowed `max_amount` series and returns a struct describing whether each point is anomalous. We keep only the windows
-where the largest transaction broke above **that customer's** model bound. The result is persisted as a
-[materialized table](https://docs.confluent.io/cloud/current/flink/concepts/dynamic-tables.html).
+Now run the model. `ML_DETECT_ANOMALIES` trains **one ARIMA model per customer** (`PARTITION BY customer_id`) over the windowed `max_amount` series and returns a struct describing whether each point is anomalous. We keep only the windows where the largest transaction broke above **that customer's** model bound. Confluent persists the result as a [materialized table](https://docs.confluent.io/cloud/current/flink/concepts/dynamic-tables.html).
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE flagged_windows AS
@@ -184,10 +158,9 @@ WITH scored AS (
     ML_DETECT_ANOMALIES(
       CAST(max_amount AS DOUBLE), window_time,
       JSON_OBJECT(
-        'minTrainingSize'      VALUE 10,
-        'maxTrainingSize'      VALUE 24,
-        'confidencePercentage' VALUE 99.0,
-        'enableStl'            VALUE FALSE
+        'minTrainingSize'      VALUE 20,
+        'maxTrainingSize'      VALUE 300,
+        'confidencePercentage' VALUE 99.9
       )
     ) OVER (
       PARTITION BY customer_id  -- one model per customer
@@ -225,21 +198,13 @@ WHERE CAST(max_amount AS DOUBLE) > anom.upper_bound
 
 > [!NOTE]
 >
-> `minTrainingSize: 10` means each model needs 10 windows (~2.5 minutes) before it starts scoring, and
-> `maxTrainingSize: 24` keeps training data fresh so a past spike ages out (~6 minutes) instead of skewing
-> the model's bounds. Each ARIMA model trains independently per customer — 50 concurrent models from one statement.
+> `minTrainingSize: 20` means each model needs 20 windows (~5 minutes) before it starts scoring. `maxTrainingSize: 300` gives each model a long, stable history so a single fraudulent spike is only ~1/300th of the training data: too small to drag the fitted level around. With a short window, one large spike dominates the fit and pushes the forecast wildly off, even negative. Each ARIMA model trains independently per customer, so one statement drives 50 concurrent models. These are the same three parameters Lab 1 tunes, with values chosen for this lab's faster 15-second windows.
 >
-> **The `max_amount > 1.5 * model_forecast_value` clause is a *relative* severity floor**, and it's the heart of this
-> lab. Instead of one global dollar cutoff (which would flag every `BIG_SPENDER`'s normal purchase and miss every
-> `SMALL_SPENDER`'s fraud), it requires the spike to be at least 50% above **that customer's own** predicted level. It
-> scales automatically per customer — a `$125` charge clears a small spender's bar (their level sits near `$48`),
-> while a routine `$4,800` purchase stays comfortably under a high-roller's (whose level sits near `$4,800`). It
-> also silences the first couple minutes of scoring, when `forecast_value` is still `NULL` and a young model's bounds
-> are unstable.
+> **The `max_amount > 1.5 * model_forecast_value` clause is a *relative* severity floor.** A global dollar cutoff would miss every `SMALL_SPENDER`'s fraud and flag every `BIG_SPENDER`'s normal purchase. This clause instead requires the spike to be at least 50% above **that customer's own** predicted level. A `$125` charge clears a small spender's bar (their level sits near `$48`); a routine `$4,800` purchase stays comfortably under a high-roller's (whose level also sits near `$4,800`). The clause also silences the first couple minutes of scoring, when `forecast_value` is still `NULL` and a young model's bounds are unstable.
 >
-> Expect a delay of **~3 minutes** before the first anomalies appear.
+> Expect a delay of **~5 minutes** before the first anomalies appear, while each model reaches its 20-window minimum.
 
-Peek at what the model is flagging — each row is one suspicious *window* (not yet a transaction):
+Peek at what the model is flagging. Each row is one suspicious *window* (not yet a transaction):
 
 ```sql no-parse
 SELECT * FROM flagged_windows;
@@ -247,14 +212,9 @@ SELECT * FROM flagged_windows;
 
 ### 3. Create the `fraud_transactions` Table
 
-`flagged_windows` tells us *which 15-second window* for *which customer* contained a spike. This step joins those
-windows back to `transactions` to recover the **actual offending payment** — the one whose amount equals the
-window's flagged `max_amount` — with its `transaction_id` and `merchant` intact.
+`flagged_windows` tells us which 15-second window for which customer contained a spike. This step joins those windows back to `transactions` to recover the **actual offending payment**: the specific transaction whose amount equals the window's flagged `max_amount`, with its `transaction_id` and `merchant` intact.
 
-The result is persisted as a
-[materialized table](https://docs.confluent.io/cloud/current/flink/concepts/dynamic-tables.html) where **every row
-is one fraudulent transaction**, ready for dashboards, alerting jobs, or sinks like Snowflake, BigQuery, Databricks,
-or OpenSearch.
+Confluent persists the result as a [materialized table](https://docs.confluent.io/cloud/current/flink/concepts/dynamic-tables.html). Every row is one fraudulent transaction, ready for dashboards, alerting jobs, or sinks like Snowflake, BigQuery, Databricks, or OpenSearch.
 
 ```sql
 CREATE OR ALTER MATERIALIZED TABLE fraud_transactions AS
@@ -278,22 +238,18 @@ WHERE p.amount = f.max_amount;
 To see the fraudulent transactions:
 
 ```sql no-parse
-SELECT * FROM fraud_transactions ORDER BY amount;
+SELECT * FROM fraud_transactions;
 ```
 
-Example output (ordered smallest-first — every row is fraud, even the `$125` one):
+Example output (every row is fraud, even the `$248` one; results appear in arrival order):
 
-| transaction_id | customer_id | customer_segment | merchant                     | amount   | model_upper_bound | model_forecast_value |
-|----------------|-------------|------------------|------------------------------|----------|-------------------|----------------------|
-| 7ee83da1-…     | CUST-0007   | SMALL_SPENDER    | Kirlin, Ziemann and Dickens  | 125.08   | 48.52             | 47.90                |
-| 560c1052-…     | CUST-0022   | MAINSTREAM       | Lakin, Kiehn and Greenfelder | 3640.15  | 481.07            | 479.87               |
-| c9bab753-…     | CUST-0043   | BIG_SPENDER      | Huels LLC                    | 45107.50 | 4857.80           | 4792.00              |
+| transaction_id | customer_id | customer_segment | merchant          | amount    | model_upper_bound | model_forecast_value |
+|----------------|-------------|------------------|-------------------|-----------|-------------------|----------------------|
+| 0c0a3d34-…     | CUST-0013   | SMALL_SPENDER    | Lueilwitz Group   | 248.09    | 48.98             | 47.76                |
+| 0d55e26f-…     | CUST-0028   | MAINSTREAM       | Stehr-Anderson    | 4510.75   | 499.53            | 476.99               |
+| 283a1691-…     | CUST-0046   | BIG_SPENDER      | Orn-Price         | 36401.50  | 5010.10           | 4816.60              |
 
-🎯 **This is the payoff.** Look at the first row: a `$125.08` charge is flagged as fraud — an amount that's *invisible*
-to any sensible global threshold, and that a `BIG_SPENDER` would clear a dozen times a day without a second glance.
-Meanwhile `CUST-0050` routinely spends up to `$4,800` (you saw it above) and is **never** flagged. No single
-`IF amount > X` rule can catch the `$125` fraud without drowning in false positives on the big spenders — but 50
-per-customer models do it effortlessly, with zero hand-tuned thresholds.
+🎯 Look at the first row: a `$248.09` charge is flagged as fraud. That amount is completely invisible to any sensible global threshold; a `BIG_SPENDER` clears it a dozen times before lunch. Meanwhile `CUST-0050` routinely spends up to `$4,800` and is **never** flagged. No single `IF amount > X` rule catches the `$248` fraud without drowning in false positives on the big spenders. Fifty per-customer models handle it with no thresholds to tune.
 
 ### 4. 🎯 Challenge: Which Customers Are Getting Hit the Hardest? 💸
 
@@ -330,8 +286,7 @@ GROUP BY customer_id, customer_segment;
 
 `ML_DETECT_ANOMALIES` uses **ARIMA**. Confluent Cloud also ships
 [`ML_DETECT_ANOMALIES_ROBUST`](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
-(Open Preview), which uses **Median Absolute Deviation (MAD)** instead — no `p`/`d`/`q` orders to tune, and it's
-robust to outliers by design. Try it as a drop-in replacement for the scoring step, still **one model per customer**:
+(Open Preview), which uses **Median Absolute Deviation (MAD)** instead. No `p`/`d`/`q` orders to tune, and outliers don't drag the center around the way they do with ARIMA. Try it as a drop-in replacement for the scoring step, still **one model per customer**:
 
 ```sql no-parse
 CREATE OR ALTER MATERIALIZED TABLE flagged_windows_robust AS
@@ -350,14 +305,10 @@ SELECT
 FROM transaction_features;
 ```
 
-**Things to notice:** because MAD uses medians rather than means, a single past spike doesn't drag the center around —
-so you may find it needs **no severity floor at all** to stay quiet during warmup. Compare which customers each
-detector flags, and how quickly each one settles.
+**Things to notice:** MAD uses medians rather than means, so a single past spike doesn't drag the center around. You may find it needs **no severity floor at all** to stay quiet during warmup. Compare which customers each detector flags, and how quickly each one settles.
 
 ## Navigation
 
 - **← Back to Overview**: [Main README](./README.md)
 - **← Previous Lab**: [Lab 1](./Lab1-Walkthrough.md)
 - **🧹 Cleanup**: Run `uv run destroy`
-</content>
-</invoke>
