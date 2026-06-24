@@ -167,8 +167,9 @@ class FlinkHelper:
             True if the catalog object exists; False on FAILED, error, or missing.
         """
         stmt_name = self._unique_statement_name(f"verify-{obj_type.lower()}", obj_name)
-        # DESCRIBE TABLE foo is invalid syntax; for TABLE just use DESCRIBE foo.
-        describe_sql = f"DESCRIBE {obj_name}" if obj_type == "TABLE" else f"DESCRIBE {obj_type} {obj_name}"
+        # DESCRIBE TABLE/VIEW foo is invalid syntax; a view is described exactly like a
+        # table, so for both just use DESCRIBE foo. AGENT/TOOL/MODEL need DESCRIBE TYPE name.
+        describe_sql = f"DESCRIBE {obj_name}" if obj_type in ("TABLE", "VIEW") else f"DESCRIBE {obj_type} {obj_name}"
         cmd = [
             "confluent",
             "flink",

@@ -61,6 +61,7 @@ _DDL_PREFIXES = (
     "CREATE OR ALTER MATERIALIZED TABLE",
     "CREATE MATERIALIZED TABLE",
     "CREATE OR REPLACE MATERIALIZED TABLE",
+    "CREATE VIEW",
     "CREATE AGENT",
     "CREATE TOOL",
     "CREATE MODEL",
@@ -79,7 +80,7 @@ def is_executable_pipeline_sql(sql: str) -> bool:
 
 
 _OBJECT_RE = re.compile(
-    r"CREATE\s+(?:OR\s+(?:ALTER|REPLACE)\s+)?(MATERIALIZED\s+TABLE|TABLE|AGENT|TOOL|MODEL)"
+    r"CREATE\s+(?:OR\s+(?:ALTER|REPLACE)\s+)?(MATERIALIZED\s+TABLE|TABLE|VIEW|AGENT|TOOL|MODEL)"
     r"\s+(?:IF\s+NOT\s+EXISTS\s+)?([`'\"]?[\w.]+[`'\"]?)",
     re.IGNORECASE,
 )
@@ -88,7 +89,7 @@ _OBJECT_RE = re.compile(
 def extract_sql_object(sql: str) -> tuple[str, str] | None:
     """Return (object_type, unqualified_name) for a CREATE DDL statement, or None.
 
-    object_type is normalized to one of: "TABLE", "AGENT", "TOOL", "MODEL".
+    object_type is normalized to one of: "TABLE", "VIEW", "AGENT", "TOOL", "MODEL".
     (MATERIALIZED TABLE is normalized to "TABLE" since DESCRIBE and DROP treat them the same.)
 
     Examples:
