@@ -62,7 +62,7 @@ class TestLab2:
             submitted.append(stmt)
 
         # Headline assertion (thesis): fraud_transactions emits a SMALL_SPENDER spike at a
-        # sub-$500 amount. SMALL_SPENDER normal tops out ~$48 and their fraud spikes are
+        # sub-$500 amount. SMALL_SPENDER normal spans ~$1-$48 and their fraud spikes are
         # ~$125-$890, so a flagged row with 100 < amount < 500 is a genuine spike a global
         # "IF amount > X" rule would have to ignore to avoid flooding on BIG_SPENDERs'
         # routine purchases. Catching it is only possible because each customer has its own
@@ -86,8 +86,8 @@ class TestLab2:
         )
 
         # Converse assertion: no ordinary purchase is flagged. Each tier's normal ceiling
-        # sits well below its fraud spikes (SMALL ~$48 vs ~$125+, MAINSTREAM ~$480 vs
-        # ~$1,250+, BIG ~$4,800 vs ~$12,500+). A flagged row inside a tier's normal band
+        # sits well below its fraud spikes (SMALL ceiling ~$48 vs spikes ~$125+, MAINSTREAM
+        # ~$480 vs ~$1,250+, BIG ~$4,800 vs ~$12,500+). A flagged row inside a tier's normal band
         # would mean detection collapsed back to a global dollar threshold — the exact
         # failure this per-customer design exists to avoid.
         normal_caps = {"SMALL_SPENDER": 100, "MAINSTREAM": 1000, "BIG_SPENDER": 5000}

@@ -21,31 +21,36 @@ locals {
   # 50 fixed customer IDs so each customer accumulates history quickly.
   customer_options = join(",", [for i in range(1, 51) : format("''CUST-%04d''", i)])
 
-  # Base amounts: 10 normal values repeated 600x, plus 8 varied "spike" amounts
-  # ($1,250-$8,895, deliberately non-round) appearing once each => ~0.13% of base
-  # rows are an anomalous spike. Varying the spike size surfaces a realistic spread
-  # of fraudulent amounts rather than one fixed value. Spikes are kept rare (~one per
-  # customer per ~13 min) so a spike doesn't linger in the model's training window
-  # long enough to inflate its bounds and mask the next one.
+  # Normal amounts split into four bands to create a realistic spend distribution,
+  # then concatenated with different repetition counts so the per-customer per-15s-window
+  # MAX(amount) series fed to ML_DETECT_ANOMALIES remains statistically stable:
   #
-  # The normal values are deliberately CLUSTERED in a tight band near $480 (not spread
-  # from $18). The downstream pipeline feeds ML_DETECT_ANOMALIES the per-customer
-  # per-window MAX(amount); with a tight normal band, that windowed max is a stable
-  # series (~$480) even when a 15s window happens to catch only one or two
-  # transactions. A stable series keeps each customer's ARIMA forecast positive and
-  # its confidence band snug just above the normal ceiling, so only true spikes break
-  # through. A wide normal band ($18-$480) instead makes the windowed max swing wildly
-  # on sparse windows, which produces unstable (even negative) ARIMA forecasts and
-  # flags ordinary ceiling-height purchases as fraud.
+  #   small   (5 vals, 160×) → 800 draws  — coffee, snacks, quick lunch
+  #   medium  (5 vals, 200×) → 1,000 draws — sit-down meal, gas, subscriptions
+  #   large   (5 vals, 240×) → 1,200 draws — grocery run, online order
+  #   ceiling (6 vals, 400×) → 2,400 draws — bigger purchases, ceiling of normal
   #
-  # These are BASE amounts. The transactions_insert step below scales each by a
-  # per-customer factor (×0.1 / ×1 / ×10) so the 50 customers have heterogeneous
-  # spending baselines (see the spending-tier CASE there). That heterogeneity is the
-  # whole point of Lab 2: the same dollar amount is fraud for one customer and routine
-  # for another, so no single global threshold works — only a per-customer model.
-  normal_amounts = ["420.00", "432.50", "445.00", "452.75", "460.00", "467.50", "472.00", "476.50", "478.00", "480.00"]
+  # Total normal draws: 5,400; plus 8 spike values → spike rate ≈ 0.15%.
+  # P(at least one ceiling value in a 15-draw window) ≈ 99.98%, so the windowed MAX
+  # lands in the $375–$480 base range on nearly every window and ARIMA stays stable.
+  #
+  # These are BASE amounts. The transactions_insert step scales each by ×0.1/×1/×10
+  # so the three tiers have heterogeneous baselines:
+  #   SMALL_SPENDER  (~$1–$48 normal,  ~$125–$890 fraud)
+  #   MAINSTREAM     (~$11–$480 normal, ~$1,250–$8,895 fraud)
+  #   BIG_SPENDER    (~$105–$4,800 normal, ~$12,500–$88,950 fraud)
+  normal_small   = ["10.50", "13.75", "18.00", "24.50", "32.00"]
+  normal_medium  = ["45.00", "58.00", "72.50", "88.00", "105.00"]
+  normal_large   = ["135.00", "168.00", "205.00", "255.00", "315.00"]
+  normal_ceiling = ["375.00", "415.00", "440.00", "460.00", "475.00", "480.00"]
   spike_amounts  = ["1250.75", "2480.90", "3640.15", "4510.75", "5925.40", "6840.20", "7720.50", "8895.30"]
-  amount_options = join(",", [for v in concat(flatten([for i in range(600) : local.normal_amounts]), local.spike_amounts) : "''${v}''"])
+  amount_options = join(",", [for v in concat(
+    flatten([for i in range(160) : local.normal_small]),
+    flatten([for i in range(200) : local.normal_medium]),
+    flatten([for i in range(240) : local.normal_large]),
+    flatten([for i in range(400) : local.normal_ceiling]),
+    local.spike_amounts
+  ) : "''${v}''"])
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,8 +62,8 @@ locals {
 # table and all walkthrough SQL reads from that one consistent Kafka-backed
 # stream (same pattern as Lab 1's machine_sensor_raw -> cnc_machine_signals).
 #
-# - amount: normal values clustered near $480 plus ~0.13% varied "spike" amounts
-#   ($1,250-$8,895) — the fraud signal this lab detects
+# - amount: realistic 4-band distribution ($10–$480 base) with ceiling-weighted
+#   repetition plus ~0.15% varied spike amounts ($1,250–$8,895 base) — fraud signal
 # - transaction_ts declared as event-time attribute via WATERMARK
 # ─────────────────────────────────────────────────────────────────────────────
 resource "confluent_flink_statement" "create_transactions_gen" {
@@ -146,9 +151,9 @@ resource "confluent_flink_statement" "create_transactions" {
 # The faker generates a single global amount distribution; we multiply it by a
 # per-customer factor derived from the numeric ID suffix so the 50 customers fall
 # into three heterogeneous spending tiers:
-#   - SMALL_SPENDER (CUST-0001..0017, ×0.1):  normal ~$42-$48,     fraud ~$125-$890
-#   - MAINSTREAM    (CUST-0018..0034, ×1.0):  normal ~$420-$480,   fraud ~$1,250-$8,895
-#   - BIG_SPENDER   (CUST-0035..0050, ×10):   normal ~$4,200-$4,800, fraud ~$12,500-$88,950
+#   - SMALL_SPENDER (CUST-0001..0017, ×0.1):  normal ~$1-$48,       fraud ~$125-$890
+#   - MAINSTREAM    (CUST-0018..0034, ×1.0):  normal ~$11-$480,     fraud ~$1,250-$8,895
+#   - BIG_SPENDER   (CUST-0035..0050, ×10):   normal ~$105-$4,800,  fraud ~$12,500-$88,950
 #
 # customer_segment is a human-readable label only — ML_DETECT_ANOMALIES never sees
 # it; each model partitions by customer_id and learns that customer's normal from

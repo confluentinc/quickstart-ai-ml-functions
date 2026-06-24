@@ -66,11 +66,11 @@ The `transactions` topic streams ~50 records per second across 50 customers. Eac
 
 The 50 customers split into three spending tiers. The *same dollar amount* means different things depending on which tier you're looking at:
 
-| `customer_segment` | Customers | Normal amounts | Fraud spikes (~0.13%) |
+| `customer_segment` | Customers | Normal amounts | Fraud spikes (~0.15%) |
 | ------------------ | ---------------- | ----------------- | --------------------- |
-| `SMALL_SPENDER`    | CUST-0001–0017   | ~$42 – $48        | ~$125 – $890          |
-| `MAINSTREAM`       | CUST-0018–0034   | ~$420 – $480      | ~$1,250 – $8,895      |
-| `BIG_SPENDER`      | CUST-0035–0050   | ~$4,200 – $4,800  | ~$12,500 – $88,950    |
+| `SMALL_SPENDER`    | CUST-0001–0017   | ~$1 – $48         | ~$125 – $890          |
+| `MAINSTREAM`       | CUST-0018–0034   | ~$11 – $480       | ~$1,250 – $8,895      |
+| `BIG_SPENDER`      | CUST-0035–0050   | ~$105 – $4,800    | ~$12,500 – $88,950    |
 
 > [!NOTE]
 >
@@ -91,7 +91,7 @@ Example output:
 | 9bd56699-…     | CUST-0031   | MAINSTREAM       | Bergstrom Inc    | 460.00  | 2026-06-10 12:39:01.000 |
 | c1220339-…     | CUST-0043   | BIG_SPENDER      | Kuhic and Sons   | 4452.00 | 2026-06-10 12:39:02.000 |
 
-**See how different the customers are.** Run this to compare spending ranges. A `SMALL_SPENDER` lives entirely under `$50`; a `BIG_SPENDER`'s *typical* purchase dwarfs the other tier's largest:
+**See how different the customers are.** Run this to compare spending ranges. A `SMALL_SPENDER`'s normal purchases span `$1`–`$48` (coffee to a modest meal); a `BIG_SPENDER`'s *typical* purchase dwarfs the other tier's largest:
 
 ```sql no-parse
 SELECT
@@ -108,9 +108,14 @@ Example output (rows arrive in emission order; the contrast between tiers is wha
 
 | customer_id | customer_segment | min_amount | max_amount | avg_amount |
 | ----------- | ---------------- | ---------- | ---------- | ---------- |
-| CUST-0001   | SMALL_SPENDER    | 42.00      | 48.00      | 45.10      |
-| CUST-0025   | MAINSTREAM       | 420.00     | 480.00     | 451.00     |
-| CUST-0050   | BIG_SPENDER      | 4200.00    | 4800.00    | 4510.30    |
+| CUST-0001   | SMALL_SPENDER    | 1.05       | 48.00      | 26.10      |
+| CUST-0025   | MAINSTREAM       | 10.50      | 480.00     | 261.00     |
+| CUST-0050   | BIG_SPENDER      | 105.00     | 4800.00    | 2610.30    |
+
+> [!NOTE]
+>
+> `max_amount` in this unbounded `MAX` query will climb above the normal ceiling once fraud spikes accumulate (~one per customer every ~11 minutes). The example above is from early in the run; the contrast in *normal* ranges is the point.
+
 
 ### The Approach
 
@@ -200,7 +205,7 @@ WHERE CAST(max_amount AS DOUBLE) > anom.upper_bound
 >
 > `minTrainingSize: 20` means each model needs 20 windows (~5 minutes) before it starts scoring. `maxTrainingSize: 300` gives each model a long, stable history so a single fraudulent spike is only ~1/300th of the training data: too small to drag the fitted level around. With a short window, one large spike dominates the fit and pushes the forecast wildly off, even negative. Each ARIMA model trains independently per customer, so one statement drives 50 concurrent models. These are the same three parameters Lab 1 tunes, with values chosen for this lab's faster 15-second windows.
 >
-> **The `max_amount > 1.5 * model_forecast_value` clause is a *relative* severity floor.** A global dollar cutoff would miss every `SMALL_SPENDER`'s fraud and flag every `BIG_SPENDER`'s normal purchase. This clause instead requires the spike to be at least 50% above **that customer's own** predicted level. A `$125` charge clears a small spender's bar (their level sits near `$48`); a routine `$4,800` purchase stays comfortably under a high-roller's (whose level also sits near `$4,800`). The clause also silences the first couple minutes of scoring, when `forecast_value` is still `NULL` and a young model's bounds are unstable.
+> **The `max_amount > 1.5 * model_forecast_value` clause is a *relative* severity floor.** A global dollar cutoff would miss every `SMALL_SPENDER`'s fraud and flag every `BIG_SPENDER`'s normal purchase. This clause instead requires the spike to be at least 50% above **that customer's own** predicted level. A `$125` charge clears a small spender's bar (their ceiling sits near `$48`); a routine `$4,800` purchase stays comfortably under a high-roller's (whose ceiling also sits near `$4,800`). The clause also silences the first couple minutes of scoring, when `forecast_value` is still `NULL` and a young model's bounds are unstable.
 >
 > Expect a delay of **~5 minutes** before the first anomalies appear, while each model reaches its 20-window minimum.
 
@@ -209,6 +214,8 @@ Peek at what the model is flagging. Each row is one suspicious *window* (not yet
 ```sql no-parse
 SELECT * FROM flagged_windows;
 ```
+
+<img src="./assets/lab2/Lab2-flagged_windows.png" alt="flagged_windows query results" style="max-width: 100%;" />
 
 ### 3. Create the `fraud_transactions` Table
 
@@ -241,28 +248,28 @@ To see the fraudulent transactions:
 SELECT * FROM fraud_transactions;
 ```
 
-Example output (every row is fraud, even the `$248` one; results appear in arrival order):
+<img src="./assets/lab2/Lab2-fraud_transactions.png" alt="fraud_transactions query results" style="max-width: 100%;" />
 
-| transaction_id | customer_id | customer_segment | merchant          | amount    | model_upper_bound | model_forecast_value |
-|----------------|-------------|------------------|-------------------|-----------|-------------------|----------------------|
-| 0c0a3d34-…     | CUST-0013   | SMALL_SPENDER    | Lueilwitz Group   | 248.09    | 48.98             | 47.76                |
-| 0d55e26f-…     | CUST-0028   | MAINSTREAM       | Stehr-Anderson    | 4510.75   | 499.53            | 476.99               |
-| 283a1691-…     | CUST-0046   | BIG_SPENDER      | Orn-Price         | 36401.50  | 5010.10           | 4816.60              |
+Example output (every row is fraud; results appear in arrival order):
 
-🎯 Look at the first row: a `$248.09` charge is flagged as fraud. That amount is completely invisible to any sensible global threshold; a `BIG_SPENDER` clears it a dozen times before lunch. Meanwhile `CUST-0050` routinely spends up to `$4,800` and is **never** flagged. No single `IF amount > X` rule catches the `$248` fraud without drowning in false positives on the big spenders. Fifty per-customer models handle it with no thresholds to tune.
+| transaction_id | customer_id | customer_segment | merchant           | amount   | model_upper_bound | model_forecast_value |
+|----------------|-------------|------------------|--------------------|----------|-------------------|----------------------|
+| a3f2b1c0-…     | CUST-0034   | MAINSTREAM       | Hettinger-Larkin   | 3640.15  | 1304.86           | 512.16               |
+| b7e4d2f1-…     | CUST-0025   | MAINSTREAM       | Johnston-Bins      | 3640.15  | 1381.86           | 512.79               |
+| c9d1a3e2-…     | CUST-0037   | BIG_SPENDER      | Dietrich-Gorczany  | 77205.00 | 17987.00          | 5303.00              |
+| d2c8b4f3-…     | CUST-0044   | BIG_SPENDER      | Dicki Group        | 59254.00 | 9079.00           | 4936.00              |
+| e5f7c6a4-…     | CUST-0001   | SMALL_SPENDER    | Reichel Inc        | 684.02   | 106.98            | 49.69                |
 
-### 4. 🎯 Challenge: Which Customers Are Getting Hit the Hardest? 💸
+Look at the last row: a `$684.02` charge is flagged as fraud for `CUST-0001`. That amount is completely invisible to any sensible global threshold — a `BIG_SPENDER` might spend that on lunch! Meanwhile `CUST-0037` drops `$77,205` and that's the one flagged, because it blows past their own model's ceiling of `$17,987`. Even a `SMALL_SPENDER` buying a `$48` jacket won't trigger it — only a `$684` spike that dwarfs their model's upper bound does. No single `IF amount > X` rule catches the `$684` fraud without drowning in false positives on the big spenders. Fifty per-customer models handle it with no thresholds to tune.
 
-**Mission brief.** Fraud ops just pinged you on Slack: *"Which customers are bleeding the most? We need to call them
-now."*
+### 4. Challenge: Which Customers Are Getting Hit the Hardest?
 
-You have `fraud_transactions` streaming live. Build one materialized table named `fraud_by_customer` that answers,
-per customer:
+Your goal is to build a materialized table named `fraud_by_customer` that answers:
 
-1. **How many** fraudulent transactions?
-2. **How much** money is on the line?
+1. **How many** fraudulent transactions has each customer fallen victim to?
+2. **How much** money has each customer with fraudulent transations lost?
 
-Start from this skeleton and fill in `<YOUR_LOGIC>`:
+Start from this boilerplate code, and fill in `<YOUR_LOGIC>`:
 
 ```sql no-parse
 CREATE OR ALTER MATERIALIZED TABLE fraud_by_customer AS
@@ -282,7 +289,7 @@ GROUP BY customer_id, customer_segment;
 
 </details>
 
-### 5. 🧪 Bonus: A Different Algorithm, Same Per-Customer Idea
+### 5. Bonus: A Different Algorithm, Same Per-Customer Idea
 
 `ML_DETECT_ANOMALIES` uses **ARIMA**. Confluent Cloud also ships
 [`ML_DETECT_ANOMALIES_ROBUST`](https://docs.confluent.io/cloud/current/ai/builtin-functions/detect-anomalies.html)
@@ -311,4 +318,4 @@ FROM transaction_features;
 
 - **← Back to Overview**: [Main README](./README.md)
 - **← Previous Lab**: [Lab 1](./Lab1-Walkthrough.md)
-- **🧹 Cleanup**: Run `uv run destroy`
+- **Cleanup**: Run `uv run destroy`
