@@ -184,6 +184,58 @@ SELECT * FROM equipment_anomalies;
 
 Anomalies can indicate bearing wear, spindle imbalance, or tool misalignment.
 
+#### Optional Early Access: Detect Anomalies with Granite FlowState
+
+`AI_DETECT_ANOMALIES` can run IBM Granite FlowState against the same per-machine vibration series. Confluent must enable this Early Access function for your organization; the ARIMA query above remains the default.
+
+Run this block manually after creating `machine_health_features`. The `sql no-parse` fence prevents the lab runner and tests from submitting it automatically.
+
+```sql no-parse
+CREATE OR ALTER MATERIALIZED TABLE equipment_anomalies_ai AS
+SELECT
+    machine_id,
+    ts,
+    vibration_avg,
+    anomaly.is_anomaly,
+    anomaly.forecast_value,
+    anomaly.lower_bound,
+    anomaly.upper_bound
+FROM (
+    SELECT
+        machine_id,
+        ts,
+        vibration_avg,
+        AI_DETECT_ANOMALIES(
+            vibration_avg,
+            ts,
+            JSON_OBJECT(
+                'model'                VALUE 'flowstate',
+                'minContextSize'       VALUE 20,
+                'maxContextSize'       VALUE 200,
+                'confidencePercentage' VALUE 99.99,
+                'rmseWindowSize'       VALUE 5
+            )
+        ) OVER (
+            PARTITION BY machine_id
+            ORDER BY ts
+            RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS anomaly
+    FROM machine_health_features
+)
+WHERE anomaly.is_anomaly = TRUE;
+```
+
+Unlike the severity-filtered ARIMA example, this table keeps every anomaly FlowState identifies, including unusually low vibration. FlowState needs 20 windows per machine before it returns model bounds. With 5-second windows, allow roughly two minutes for warmup, then apply the operational severity filter when reading the materialized output:
+
+```sql no-parse
+SELECT *
+FROM equipment_anomalies_ai
+WHERE vibration_avg > upper_bound
+  AND vibration_avg > 0.1;
+```
+
+Keep this filter outside the materialized-table definition so FlowState receives the complete vibration history it needs for context. The filter applies the same upward-direction and severity rules as the ARIMA example. The models can flag different timestamps, so compare the type and magnitude of their alerts rather than expecting identical rows.
+
 ---
 
 ## Conclusion

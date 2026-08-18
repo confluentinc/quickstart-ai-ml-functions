@@ -41,6 +41,8 @@ dependencies = [
     "python-dotenv>=1.0.0,<2.0",
     "confluent-kafka[avro,schema-registry]>=2.3.0",
     "faker>=20.0.0",
+    "tomli-w>=1.0.0",
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 # Optional dependencies for enhanced functionality

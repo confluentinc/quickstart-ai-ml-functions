@@ -205,7 +205,7 @@ SELECT
   ROUND((avg_throughput_mbps / capacity_mbps) * 100, 1) AS utilization_pct
 FROM lab3_tower_agg
 ORDER BY window_end DESC, tower_id
-LIMIT 30;
+LIMIT 10;
 ```
 
 Each row represents one 10-second window for one tower. `utilization_pct` shows current tower load.
@@ -277,6 +277,66 @@ FROM lab3_forecasts
 ORDER BY forecast_utilization_pct DESC
 LIMIT 20;
 ```
+
+#### Optional Early Access: Forecast with TimesFM or Granite
+
+`AI_FORECAST` runs a pretrained time-series model instead of fitting ARIMA to each tower. This example uses Google TimesFM 2.5. It requires Early Access enrollment, so the standard `ML_FORECAST` pipeline above remains the lab default.
+
+Run this block manually only if Confluent has enabled `AI_FORECAST` for your organization. The `sql no-parse` fence keeps `uv run lab3-flink` from submitting the Early Access query automatically.
+
+```sql no-parse
+CREATE MATERIALIZED TABLE lab3_forecasts_ai
+DISTRIBUTED BY (tower_id) INTO 6 BUCKETS
+AS
+SELECT
+  tower_id,
+  region,
+  window_end AS ts,
+  capacity_mbps,
+  avg_throughput_mbps,
+  forecast_result.forecast[1].`timestamp` AS forecast_ts,
+  forecast_result.forecast[1].mean AS forecast_throughput_mbps,
+  forecast_result.forecast[1].q10 AS confidence_lower_mbps,
+  forecast_result.forecast[1].q90 AS confidence_upper_mbps
+FROM (
+  SELECT
+    tower_id,
+    region,
+    window_end,
+    capacity_mbps,
+    avg_throughput_mbps,
+    AI_FORECAST(
+      avg_throughput_mbps,
+      window_end,
+      JSON_OBJECT(
+        'model' VALUE 'timesfm-2.5',
+        'horizon' VALUE 6
+      )
+    ) OVER (
+      PARTITION BY tower_id
+      ORDER BY window_end
+      RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS forecast_result
+  FROM lab3_tower_agg
+)
+WHERE CARDINALITY(forecast_result.forecast) >= 1;
+```
+
+Confluent Flink arrays use 1-based indexes, so `forecast[1]` is the first point in each rolling forecast. To try IBM Granite Tiny Time Mixers instead, change one line:
+
+```sql no-parse
+'model' VALUE 'ttm',
+```
+
+Query one tower, switch the results to chart view, and plot `forecast_throughput_mbps`:
+
+```sql no-parse
+SELECT * FROM `lab3_forecasts_ai` WHERE tower_id = 'TOWER-LA-02';
+```
+
+Each new aggregate produces another forecast row, so the chart builds a rolling view of predicted throughput over time.
+
+![TimesFM rolling throughput forecast](./assets/lab3/lab3_forecasts_ai-chart.png)
 
 ---
 
