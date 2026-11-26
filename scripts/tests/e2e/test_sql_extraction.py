@@ -24,6 +24,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
         ("Lab1-Walkthrough.md", ["machine_health_features", "equipment_anomalies"]),
         ("Lab2-Walkthrough.md", ["transaction_features", "flagged_windows", "fraud_transactions"]),
         ("Lab3-Walkthrough.md", ["lab3_tower_agg", "lab3_forecasts", "lab3_capacity_alerts"]),
+        ("Lab4-Walkthrough.md", ["etth1_forecasts", "etth1_anomalies"]),
     ],
 )
 def test_walkthrough_yields_expected_tables(walkthrough: str, expected_tables: list[str]) -> None:
@@ -64,7 +65,7 @@ def test_uses_materialized_table_consistently() -> None:
     Plain CREATE TABLE in a walkthrough is a regression — the labs were standardized
     on materialized tables for consistency.
     """
-    for walkthrough in ("Lab1-Walkthrough.md", "Lab2-Walkthrough.md", "Lab3-Walkthrough.md"):
+    for walkthrough in ("Lab1-Walkthrough.md", "Lab2-Walkthrough.md", "Lab3-Walkthrough.md", "Lab4-Walkthrough.md"):
         blocks = extract_sql_blocks(PROJECT_ROOT / walkthrough)
         for block in blocks:
             head = block["sql"].lstrip().upper()

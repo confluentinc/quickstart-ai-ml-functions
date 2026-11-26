@@ -6,7 +6,7 @@ import pytest
 
 
 def full() -> None:
-    """Run the full E2E suite (deploys, runs Labs 1-3, tears down)."""
+    """Run the full E2E suite (deploys, runs Labs 1-4, tears down)."""
     sys.exit(
         pytest.main(
             [
@@ -14,6 +14,7 @@ def full() -> None:
                 "scripts/tests/e2e/test_lab1.py",
                 "scripts/tests/e2e/test_lab2.py",
                 "scripts/tests/e2e/test_lab3.py",
+                "scripts/tests/e2e/test_lab4.py",
                 "-v",
                 "--timeout=3600",
             ]

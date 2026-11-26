@@ -71,6 +71,9 @@ deployment-summary = "scripts.common.generate_deployment_summary:main"
 tests = "scripts.tests.run:full"
 lab3-datagen = "scripts.lab3.lab3_datagen:main"
 lab3-flink = "scripts.lab3.lab3_flink:main"
+lab4-replay = "scripts.lab4.replay:cli"
+lab4-flink = "scripts.lab4.lab4_flink:main"
+lab4-dashboard = "scripts.lab4.dashboard.server:main"
 setup-mcp = "scripts.mcp_setup:main"
 
 
