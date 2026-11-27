@@ -40,6 +40,8 @@ AWS_REGIONS = [
     "ap-northeast-2",
 ]
 
+ALL_LABS = ["lab1", "lab2", "lab3", "lab4"]
+
 AZURE_REGIONS = [
     "eastus2",
     "westus",
@@ -49,6 +51,23 @@ AZURE_REGIONS = [
     "eastasia",
     "centralindia",
 ]
+
+
+def run_post_deploy(env: str) -> bool:
+    """Lab-specific setup that has to happen after Terraform (e.g. loading data)."""
+    if env != "lab4":
+        return True
+    # Lab 4 replays a real dataset, so load its history now; attendees go straight to the SQL.
+    from scripts.lab4.replay import backfill_for_deploy
+
+    print("\nLoading Lab 4 transformer history...")
+    try:
+        backfill_for_deploy()
+    except Exception as e:
+        print(f"Error loading Lab 4 data: {e}")
+        print("Retry with: uv run lab4-replay --backfill-only")
+        return False
+    return True
 
 
 def main() -> None:
@@ -63,7 +82,7 @@ def main() -> None:
     parser.add_argument(
         "lab",
         nargs="?",
-        choices=["lab1", "lab2", "lab3"],
+        choices=ALL_LABS,
         help="Lab to deploy (e.g. 'lab2'). Omit to deploy all labs.",
     )
     args = parser.parse_args()
@@ -82,7 +101,8 @@ def main() -> None:
         # Extract values from .env (ensure cloud provider is lowercase)
         cloud = creds.get("TF_VAR_cloud_provider", "").lower()
         region = creds.get("TF_VAR_cloud_region", "")
-        envs_to_deploy = ["core", "lab1", "lab2", "lab3"]
+        labs = [args.lab] if args.lab else ALL_LABS
+        envs_to_deploy = ["core", *labs]
 
         # Build environment variables for Terraform
         env_vars = {
@@ -95,7 +115,7 @@ def main() -> None:
         print("✓ Credentials loaded from credentials.env")
         print(f"  Cloud: {cloud}")
         print(f"  Region: {region}")
-        print("  Deploying: lab1, lab2, lab3")
+        print(f"  Deploying: {', '.join(labs)}")
         print()
 
         # Write terraform.tfvars files
@@ -136,8 +156,8 @@ def main() -> None:
             envs_to_deploy = ["core", args.lab]
             print(f"Deploying: {args.lab} (specified on command line)")
         else:
-            envs_to_deploy = ["core", "lab1", "lab2", "lab3"]
-            print("Deploying: lab1, lab2, lab3 (default)")
+            envs_to_deploy = ["core", *ALL_LABS]
+            print(f"Deploying: {', '.join(ALL_LABS)} (default)")
 
         # Step 5: Prompt for required credentials
         print("\n--- Credential Configuration ---")
@@ -191,6 +211,10 @@ def main() -> None:
 
         if not run_terraform(env_path):
             print(f"\nDeployment failed at {env}. Stopping.")
+            sys.exit(1)
+
+        if not run_post_deploy(env):
+            print(f"\nDeployment failed while preparing {env} data. Stopping.")
             sys.exit(1)
 
     print("\n✓ All deployments completed successfully!")

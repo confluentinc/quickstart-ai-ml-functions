@@ -21,6 +21,10 @@ Build real-time ML pipelines with [Confluent Cloud](https://www.confluent.io/con
 <td><a href="./Lab3-Walkthrough.md"><strong>Lab 3 – Network Capacity Forecasting</strong></a></td>
 <td>Real-time per-tower capacity forecasting using <code>ML_FORECAST</code> with per-tower ARIMA models to alert before network congestion impacts customers.<br><br><img src="./assets/lab3/lab3-architecture.png" alt="Lab 3 architecture diagram"></td>
 </tr>
+<tr>
+<td><a href="./Lab4-Walkthrough.md"><strong>Lab 4 – Transformer Load Forecasting</strong></a></td>
+<td>36-hour load forecasts and real-time fault detection for a power transformer using <code>AI_FORECAST</code> and <code>AI_DETECT_ANOMALIES</code> with the pretrained IBM Granite PatchTST-FM model, plus a live dashboard where you can simulate a fault and watch Flink catch it in seconds. <em>Requires Early Access.</em><br><br><img src="./assets/lab4/lab4-architecture.png" alt="Lab 4 architecture diagram"></td>
+</tr>
 </table>
 
 
@@ -78,8 +82,9 @@ quickstart-ai-ml-functions/
 │   ├── lab1/              # Lab 1 resources
 │   ├── lab2/              # Lab 2 resources
 │   ├── lab3/              # Lab 3 resources
-│   └── lab4/              # Lab 4 resources
+│   └── lab4/              # Lab 4 resources (source table)
 ├── scripts/deploy.py      # Start here with uv run deploy
+├── scripts/lab4/          # Lab 4 data replay, Flink runner and live dashboard
 └── scripts/               # Python utilities invoked with uv
 ```
 

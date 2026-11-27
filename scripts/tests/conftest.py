@@ -1,5 +1,6 @@
 """Pytest configuration and shared fixtures for E2E tests."""
 
+import os
 import shutil
 import subprocess
 from collections.abc import Generator
@@ -119,8 +120,10 @@ def deployed_environment() -> Generator[dict[str, Any], None, None]:
 
     flink: FlinkHelper | None = None
     try:
+        # TEST_LAB=lab4 deploys just that lab (plus core) instead of every lab.
+        lab = os.environ.get("TEST_LAB")
         result = subprocess.run(
-            ["uv", "run", "deploy", "--testing"],
+            ["uv", "run", "deploy", "--testing", *([lab] if lab else [])],
             cwd=PROJECT_ROOT,
             timeout=1800,
         )

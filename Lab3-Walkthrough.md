@@ -443,6 +443,13 @@ This removes all Confluent Cloud resources provisioned for Lab 3.
 
 ---
 
+## Navigation
+
+- **← Back to Overview**: [Main README](./README.md)
+- **→ Next Lab**: [Lab 4](./Lab4-Walkthrough.md)
+
+---
+
 ## Sign up for early access to Flink AI features
 
 For early access to exciting new Flink AI features, [fill out this form and we'll add you to our early access previews.](https://events.confluent.io/early-access-flink-features)

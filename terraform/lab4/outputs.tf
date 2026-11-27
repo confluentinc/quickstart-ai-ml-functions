@@ -7,3 +7,6 @@ output "confluent_kafka_cluster_id" {
 output "confluent_flink_compute_pool_id" {
   value = data.terraform_remote_state.core.outputs.confluent_flink_compute_pool_id
 }
+output "source_table" {
+  value = "etth1_readings"
+}
